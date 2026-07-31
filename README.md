@@ -367,3 +367,12 @@ works.
   travel in plaintext over whatever transport fronts it otherwise. Option
   A (`python3 app.py`) has no TLS and no reverse proxy, so keep it off the
   open internet.
+
+## License
+
+Copyright (C) 2026 Jake Flanagan
+
+Licensed under the GNU Affero General Public License v3.0 (AGPLv3). See
+[`LICENSE`](LICENSE) for the full text. Anyone running a modified version
+of this backend as a network service must make their modified source
+available to users of that service.
