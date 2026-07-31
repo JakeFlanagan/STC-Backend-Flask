@@ -1,0 +1,15 @@
+databases/
+__pycache__/
+*.pyc
+.active_db
+auth.db
+settings.cfg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+node_modules/
+docker-compose.override.yml
+rclone.conf
+.env
+*.db.enc

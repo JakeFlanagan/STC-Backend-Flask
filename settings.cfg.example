@@ -1,0 +1,87 @@
+# Sole-Trader Companion (STC) backend settings.
+#
+# Copy or rename this file to `settings.cfg` and fill in anything you want
+# to customize. Leave a value blank and the app generates one
+# automatically the first time it starts (and prints it once, if it's the
+# admin password). settings.cfg is gitignored - this .example file is the
+# only version that gets committed.
+
+# Address/port the backend binds to when run directly (`python3 app.py`).
+# 127.0.0.1 (loopback) is right for running on your own machine; set this
+# to 0.0.0.0 if you're running `python3 app.py` somewhere you need it
+# reachable from outside that machine. Not used by the Docker image (see
+# Dockerfile) - that runs gunicorn instead, which binds via its own `-b`
+# flag, already fixed to 0.0.0.0 there.
+SC_HOST=127.0.0.1
+SC_PORT=5000
+
+# Set to 1 to enable Werkzeug's interactive debugger/auto-reloader. Leave
+# as 0 unless you're actively developing this backend locally - the
+# debugger allows arbitrary code execution.
+SC_DEBUG=0
+
+# Secret used to sign JWT auth tokens. Leave blank to auto-generate.
+JWT_SECRET=
+JWT_EXPIRY_MINUTES=60
+REFRESH_EXPIRY_DAYS=30
+
+# Key used to encrypt database files at rest. Leave blank to auto-generate.
+DB_ENCRYPTION_KEY=
+
+# First admin account, created on first run. Leave ADMIN_PASSWORD blank to
+# auto-generate a random one - it's printed to the console once, the first
+# time the app starts with no existing settings.cfg. Change it after your
+# first login.
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=
+
+# Which origins (scheme://host[:port]) may make cross-origin browser
+# requests to this API. Comma-separated. An entry ending in ":*" matches
+# that scheme+host on any port (useful for local dev, where the frontend's
+# port can vary). Add your frontend's real origin here if you're hosting
+# this backend anywhere other than localhost, e.g.:
+#   ALLOWED_ORIGINS=http://localhost:*,http://127.0.0.1:*,https://stc.example.com
+ALLOWED_ORIGINS=http://localhost:*,http://127.0.0.1:*
+
+# Set to a redis:// URL (e.g. redis://redis:6379/0) to share rate-limit
+# counters across multiple gunicorn workers/processes - see README's
+# "Scaling beyond one worker". Leave blank (the default here) for
+# in-memory storage, which only works correctly with a single worker.
+# Docker's docker-compose.yml sets this for you via the SC_REDIS_URL env
+# var instead of this file - this key matters for Option A (`python3
+# app.py`) or a manual override.
+REDIS_URL=
+
+# Minimum level logged (see observability.py) - one of DEBUG, INFO,
+# WARNING, ERROR, CRITICAL. Every log line is structured JSON on stdout.
+LOG_LEVEL=INFO
+
+# Error tracking (see observability.py's init_sentry). Leave blank (the
+# default) to disable entirely - this app has no way to provision a
+# Sentry project/DSN for you. Get one at https://sentry.io (or a
+# self-hosted instance) and paste its DSN here to enable.
+SENTRY_DSN=
+# Fraction of requests to send full performance traces for, 0.0-1.0.
+# 0.0 (the default) still reports errors, just no request tracing - raise
+# this only if you actually look at Sentry's performance tab.
+SENTRY_TRACES_SAMPLE_RATE=0.0
+
+# SMTP settings for the password-reset flow (blueprints/auth.py,
+# mailer.py). Leave SMTP_HOST blank (the default) and reset links are
+# logged instead of emailed - functional for local dev/testing, but a
+# real deployment needs a real SMTP provider here.
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_FROM=
+SMTP_USE_TLS=1
+
+# Where a password-reset email's link points a user's browser at - this
+# backend is JSON-only (see app.py's docstring), so the actual reset
+# *page* lives on whatever frontend is deployed alongside it. Change this
+# to that frontend's real origin before going to production.
+APP_BASE_URL=http://localhost:3000
+# How long a password-reset link stays valid before it must be requested
+# again.
+PASSWORD_RESET_EXPIRY_MINUTES=30

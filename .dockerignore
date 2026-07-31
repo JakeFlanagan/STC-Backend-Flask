@@ -1,0 +1,16 @@
+.git
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+tests/
+
+# Runtime state - never bake a developer's local secrets/data into the
+# image; these are bind-mounted from the host at runtime instead (see
+# docker-compose.yml).
+databases/
+auth.db
+settings.cfg
+.active_db

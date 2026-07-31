@@ -1,0 +1,10 @@
+title = "STC backend gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "settings.cfg.example is a committed template - every secret-bearing key in it (JWT_SECRET, DB_ENCRYPTION_KEY, ADMIN_PASSWORD) is deliberately left blank; the real settings.cfg with generated values is gitignored and never committed (see config.py's _load_or_create_settings)."
+paths = [
+  '''settings\.cfg\.example''',
+]

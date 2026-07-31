@@ -1,0 +1,82 @@
+# Reference deployment: this backend behind Caddy doing real TLS
+# termination (see TODO.md's now-resolved "no TLS anywhere" item - this
+# backend still never terminates TLS itself, Caddy does it in front).
+#
+# Before first `docker compose up`:
+#   1. Edit Caddyfile: replace the placeholder domain with your real one,
+#      and point its DNS A/AAAA record at this host.
+#   2. After the first `docker compose up`, edit the generated
+#      settings.cfg (in the stc_data volume - `docker compose exec app sh`
+#      to reach it at /data/settings.cfg) to add your real frontend origin
+#      to ALLOWED_ORIGINS (see settings.cfg.example's comment on that key).
+#
+# stc_data is a single directory volume holding settings.cfg, auth.db, and
+# databases/ (see config.py's SC_DATA_DIR / Dockerfile) - exactly the
+# paths TODO.md flagged as needing to persist across restarts, or every
+# restart would regenerate settings.cfg's secrets from scratch and
+# silently invalidate every existing session and encrypted backup/export.
+# One directory volume, not individual file binds - bind-mounting
+# settings.cfg as a single file breaks its atomic-write mechanism (see
+# config.py's SC_DATA_DIR comment).
+services:
+  app:
+    build: .
+    volumes:
+      - stc_data:/data
+    expose:
+      - "5000"
+    environment:
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
+      - SC_REDIS_URL=${SC_REDIS_URL:-}
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Started by default via the committed .env's COMPOSE_PROFILES=scale -
+  # see README's "Scaling beyond one worker" for the single-worker/no-
+  # Redis opt-out. No published port: reachable only from app/caddy over
+  # the compose-internal network - REDIS_PASSWORD is blank (no auth) by
+  # default because of that; set it (and update SC_REDIS_URL to match -
+  # see README) only if this service ever needs to be reachable beyond
+  # the compose-internal network.
+  redis:
+    image: redis:7-alpine
+    command: ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORD}}
+    profiles:
+      - scale
+    restart: unless-stopped
+
+  # Opt-in off-site backup sync - not started by a plain `docker compose
+  # up`, nor by the default `scale` profile (unlike redis): this needs a
+  # real remote destination and credentials this project has no way to
+  # provision for you. See README's "Off-site backups".
+  backup-sync:
+    image: rclone/rclone:latest
+    profiles:
+      - offsite-backup
+    volumes:
+      - stc_data:/data:ro
+      - ./rclone.conf:/config/rclone/rclone.conf:ro
+      - ./scripts/sync_backups.sh:/sync_backups.sh:ro
+    environment:
+      - RCLONE_REMOTE=${RCLONE_REMOTE:-}
+      - BACKUP_SYNC_INTERVAL_SECONDS=${BACKUP_SYNC_INTERVAL_SECONDS:-21600}
+    entrypoint: ["/bin/sh", "/sync_backups.sh"]
+    restart: unless-stopped
+
+volumes:
+  stc_data:
+  caddy_data:
+  caddy_config:

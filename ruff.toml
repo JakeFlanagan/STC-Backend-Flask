@@ -1,0 +1,20 @@
+# Ruff config for a small Flask app - see CONTRIBUTING.md for how this is
+# run. line-length is 120, not ruff's default 88: this codebase's own style
+# (see any blueprints/*.py) already runs long doc-comments and dict literals
+# well past 88 columns, and reformatting all of that just to satisfy a
+# stricter default isn't worth the diff noise it'd create.
+line-length = 120
+target-version = "py312"
+
+[lint]
+# Keep it to the rules that catch real bugs (unused imports/variables,
+# undefined names, obvious anti-patterns) rather than a full style
+# enforcement suite - this is a lint gate for a small single-maintainer
+# project, not a style rewrite.
+select = ["E", "F", "W"]
+ignore = [
+    "E501",  # line-too-long - a handful of comments still exceed even 120; not worth chasing
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["F401"]  # test modules sometimes import fixtures only for their side effects

@@ -1,0 +1,39 @@
+# Replace with your real domain (and point its DNS A/AAAA record at this
+# host) - Caddy automatically provisions and renews a real TLS certificate
+# for it via Let's Encrypt on first request, no manual cert management.
+localhost {
+	reverse_proxy app:5000
+
+	# This backend is JSON-API-only (see app.py's docstring - no template
+	# rendering, no static files), so the header policy can be maximally
+	# restrictive: nothing here is ever meant to be framed, load a
+	# sub-resource, or be read cross-origin by anything other than the
+	# CORS-approved frontend origins app.py's ALLOWED_ORIGINS already
+	# gates at the application layer - these headers are defense-in-depth
+	# on top of that, not a replacement for it.
+	header {
+		# Force HTTPS on every future visit for a year, including
+		# subdomains - safe here since Caddy is the only thing this
+		# backend is ever reachable through (docker-compose.yml never
+		# publishes the app service's port directly).
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# No responses here are HTML/JS to render or scripts to execute -
+		# block every resource type outright rather than enumerate one.
+		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+		# Stops a browser from MIME-sniffing a JSON response into
+		# something executable.
+		X-Content-Type-Options "nosniff"
+		# Belt-and-braces alongside frame-ancestors above for older
+		# browsers that only understand the legacy header.
+		X-Frame-Options "DENY"
+		# Never leak this API's URLs (which can carry no secrets in the
+		# path, but may in query strings on some future route) to a
+		# cross-origin Referer header.
+		Referrer-Policy "no-referrer"
+		# No browser feature (camera, geolocation, etc.) is ever relevant
+		# to a JSON API response.
+		Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+		# Don't leak which web server/version is fronting this.
+		-Server
+	}
+}
