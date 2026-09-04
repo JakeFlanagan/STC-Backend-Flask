@@ -44,6 +44,11 @@ def _run_over_all_dbs(one_fn: Callable[[sqlite3.Connection], None]) -> None:
     """
     for db_path in DB_DIR.glob("*/*.db"):
         conn = sqlite3.connect(str(db_path))
+        # Every gunicorn worker imports wsgi.py separately, so with more than
+        # one worker they all run bootstrap() at start-up and sweep the same
+        # files at the same time. Without a busy timeout the workers that lose
+        # the race abort the migration with "database is locked".
+        conn.execute("PRAGMA busy_timeout = 5000")
         try:
             one_fn(conn)
             conn.commit()
@@ -432,6 +437,9 @@ def run_migrations() -> None:
     """
     for db_path in DB_DIR.glob("*/*.db"):
         conn = sqlite3.connect(str(db_path))
+        # Same reason as _for_every_database above: multiple gunicorn workers
+        # each run this sweep at start-up, against the same files.
+        conn.execute("PRAGMA busy_timeout = 5000")
         try:
             version = _get_schema_version(conn)
             if version >= CURRENT_SCHEMA_VERSION:

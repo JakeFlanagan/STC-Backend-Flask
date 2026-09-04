@@ -387,6 +387,14 @@ def get_db() -> sqlite3.Connection:
         g.db.row_factory = sqlite3.Row  # lets us access columns by name, e.g. row["sale_price"]
         g.db.execute("PRAGMA journal_mode=WAL")   # allows concurrent readers while a write is in progress
         g.db.execute("PRAGMA foreign_keys=ON")    # enforces the ON DELETE CASCADE rules in SCHEMA
+        # WAL keeps readers off the write lock, but two writers to the same
+        # file still serialise, and without this the loser raises "database
+        # is locked" immediately instead of waiting. One user with the app
+        # open in two tabs, or a double-submitted form, is enough to hit it.
+        # auth_db.py sets the same timeout on the shared auth database for
+        # exactly this reason - the per-user databases, where nearly all the
+        # writing happens, were the ones missing it.
+        g.db.execute("PRAGMA busy_timeout = 5000")
     return g.db
 
 
