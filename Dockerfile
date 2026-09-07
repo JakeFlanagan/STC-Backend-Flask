@@ -9,6 +9,11 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+# A fixed uid, not a name. The uid is what the host sees on the volume, so
+# it has to stay stable across rebuilds or an existing /data becomes
+# unreadable after an image update.
+RUN useradd --system --uid 10001 --user-group --no-create-home app
+
 # The lock, not requirements.txt: the lock pins transitive dependencies
 # too, so the image CI builds today and the one it builds next month
 # contain the same code. requirements.txt stays the human-edited list of
@@ -28,6 +33,23 @@ EXPOSE 5000
 # existing JWT/refresh token and making every existing encrypted
 # backup/export permanently undecryptable.
 ENV SC_DATA_DIR=/data
+
+# /data must be created and owned by the app user IN THE IMAGE, not just
+# mounted. Docker copies ownership from the image's directory when it first
+# populates a named volume, so a volume created against a root-owned /data
+# stays root-owned, and the app cannot write settings.cfg no matter what
+# USER is set below. Creating it here is what makes the two work together.
+#
+# An existing volume created before this change keeps its old root
+# ownership, because Docker only seeds a volume once. Upgrading needs a
+# one-off fix on the host:
+#   docker compose run --rm --user root backend chown -R 10001:10001 /data
+RUN mkdir -p /data && chown 10001:10001 /data
+
+# Everything below runs unprivileged. The application code stays root-owned
+# and read-only to the app user, which is what you want: the only writable
+# paths are /data and the tmpfs at /tmp.
+USER 10001
 #
 # GUNICORN_WORKERS defaults to 4 and SC_REDIS_URL defaults to Redis
 # (docker-compose.yml's committed .env sets both) - rate_limit.py's
