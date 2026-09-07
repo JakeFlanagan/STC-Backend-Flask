@@ -45,14 +45,18 @@ observability.init_sentry()
 if not config.IS_TEST:
     observability.init_request_logging(app)
 observability.init_metrics(app)
-# This backend is meant to sit behind exactly one reverse proxy doing TLS
-# termination (see docker-compose.yml's Caddy service) - without ProxyFix,
-# request.remote_addr on every request would be the proxy's own IP, not the
-# real client's, which breaks rate_limit.py's per-IP throttling (every
-# client would share one bucket) and any future IP-based logging/blocking.
-# x_for=1 trusts exactly one hop of X-Forwarded-For, matching one proxy in
-# front - raise it only if another trusted hop is added in front of that.
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)  # type: ignore[method-assign]
+# This backend sits behind a reverse proxy doing TLS termination (see
+# docker-compose.yml's Caddy service). Without ProxyFix,
+# request.remote_addr on every request would be the proxy's own IP rather
+# than the real client's, which breaks rate_limit.py's per-IP throttling -
+# every client would share one bucket - along with any IP-based logging or
+# blocking built on top of it.
+#
+# The hop count is configurable rather than hardcoded, because it depends
+# on a deployment the code cannot see. It defaults to 1, which is correct
+# for the shipped compose file. See config.py's TRUSTED_PROXY_HOPS for how
+# to count them and why both a too-low and a too-high value hurt.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=config.TRUSTED_PROXY_HOPS)  # type: ignore[method-assign]
 db.init_app(app)  # hooks up close_db() to run at the end of every request
 auth_db.init_app(app)  # hooks up close_auth_db() to run at the end of every request
 limiter.init_app(app)  # per-IP throttling for blueprints/auth.py's register/login routes

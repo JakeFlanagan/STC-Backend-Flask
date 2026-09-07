@@ -85,6 +85,7 @@ _DEFAULTS: dict[str, str] = {
     "SMTP_FROM": "",
     "SMTP_USE_TLS": "1",
     "APP_BASE_URL": "http://localhost:3000",
+    "TRUSTED_PROXY_HOPS": "1",
     "PASSWORD_RESET_EXPIRY_MINUTES": "30",
 }
 
@@ -245,3 +246,18 @@ SMTP_USE_TLS = _settings["SMTP_USE_TLS"] == "1"
 # here. Change this to that frontend's real origin in production.
 APP_BASE_URL = _settings["APP_BASE_URL"]
 PASSWORD_RESET_EXPIRY_MINUTES = _int_setting(_settings, "PASSWORD_RESET_EXPIRY_MINUTES")
+# How many reverse-proxy hops in front of this backend are trusted, which
+# is how many X-Forwarded-For entries app.py's ProxyFix will strip before
+# believing one (see app.py). Getting this wrong is quiet but expensive.
+#
+# Too low and request.remote_addr becomes the nearest proxy's own address,
+# so every client shares a single rate-limit bucket. Too high and a client
+# can forge X-Forwarded-For to appear as any address it likes, which is
+# worse: it makes per-IP limits and any IP-based blocking trivially
+# bypassable.
+#
+# 1 is right for the shipped docker-compose.yml, where Caddy is the only
+# thing in front. Count the proxies that actually append to
+# X-Forwarded-For, and only the ones you control - a CDN that overwrites
+# the header rather than appending to it is not an extra hop.
+TRUSTED_PROXY_HOPS = _int_setting(_settings, "TRUSTED_PROXY_HOPS")

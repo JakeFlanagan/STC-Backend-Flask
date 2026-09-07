@@ -85,3 +85,19 @@ APP_BASE_URL=http://localhost:3000
 # How long a password-reset link stays valid before it must be requested
 # again.
 PASSWORD_RESET_EXPIRY_MINUTES=30
+
+# How many reverse-proxy hops sit in front of this backend and are trusted
+# to have appended to X-Forwarded-For (see app.py's ProxyFix). 1 is correct
+# for the shipped docker-compose.yml, where Caddy is the only thing in
+# front.
+#
+# Both directions of getting this wrong are quiet. Too low and every client
+# shares a single rate-limit bucket, because request.remote_addr becomes
+# the nearest proxy's address. Too high and a client can forge
+# X-Forwarded-For to look like any address it wants, which makes per-IP
+# limits bypassable rather than merely wrong.
+#
+# Count only proxies you control that APPEND to the header. A CDN that
+# overwrites X-Forwarded-For with the true client address is not an extra
+# hop.
+TRUSTED_PROXY_HOPS=1

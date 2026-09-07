@@ -1,20 +1,39 @@
-"""Tests for app.py's ProxyFix wiring - this backend is meant to run
-behind exactly one reverse proxy doing TLS termination (see
-docker-compose.yml), so request.remote_addr must reflect the client's real
-IP from X-Forwarded-For, not the proxy's own IP. Getting this wrong would
-silently break rate_limit.py's per-IP throttling (see test_rate_limit.py) -
-every client behind the proxy would share one bucket.
+"""Tests for app.py's ProxyFix wiring - this backend runs behind a reverse
+proxy doing TLS termination (see docker-compose.yml), so
+request.remote_addr must reflect the client's real IP from
+X-Forwarded-For, not the proxy's own IP. Getting this wrong would silently
+break rate_limit.py's per-IP throttling (see test_rate_limit.py) - every
+client behind the proxy would share one bucket.
 """
 
 import app as app_module
+import config
 from helpers import expect
 from rate_limit import limiter
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 
-def test_wsgi_app_wrapped_in_proxy_fix_trusting_one_hop():
+def test_wsgi_app_wrapped_in_proxy_fix():
     expect("app.wsgi_app is wrapped in ProxyFix", True, isinstance(app_module.app.wsgi_app, ProxyFix))
-    expect("trusts exactly one proxy hop", 1, app_module.app.wsgi_app.x_for)
+
+
+def test_trusted_hop_count_comes_from_settings():
+    """The hop count is a deployment fact the code cannot see, so it is a
+    setting rather than a literal. This pins the wiring: if the two ever
+    drift apart, a deployment that correctly sets TRUSTED_PROXY_HOPS would
+    silently keep using the old hardcoded value."""
+    expect(
+        "ProxyFix trusts exactly the configured number of hops",
+        config.TRUSTED_PROXY_HOPS,
+        app_module.app.wsgi_app.x_for,
+    )
+
+
+def test_trusted_hop_count_defaults_to_one():
+    """One proxy, matching the shipped docker-compose.yml where Caddy is
+    the only thing in front. A default above 1 would let a client forge
+    X-Forwarded-For and pick its own rate-limit bucket."""
+    expect("default is a single trusted hop", 1, config.TRUSTED_PROXY_HOPS)
 
 
 def test_rate_limit_key_follows_x_forwarded_for():
