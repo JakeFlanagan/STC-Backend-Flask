@@ -15,7 +15,7 @@ from flask import Blueprint, Response, g, jsonify, request, send_file
 
 import backup_crypto
 from config import DB_ENCRYPTION_KEY, MAX_BACKUPS_PER_DB
-from db import get_active_db_name, init_database, set_active_db, user_db_dir
+from db import get_active_db_name, init_database, is_valid_db_name, set_active_db, user_db_dir
 
 databases_bp = Blueprint("databases", __name__, url_prefix="/api/v1/databases")
 
@@ -84,7 +84,7 @@ def create_database() -> Response | tuple[Response, int]:
     alphanumerics, so they're always safe to use directly as a filename.
     """
     name = (request.get_json(silent=True) or {}).get("name", "").strip().lower().replace(" ", "_")
-    if not name or not name.replace("_", "").isalnum():
+    if not is_valid_db_name(name):
         return jsonify({"error": "Invalid name"}), 400
     if (user_db_dir(g.user_id) / f"{name}.db").exists():
         return jsonify({"error": "Already exists"}), 409
@@ -97,7 +97,7 @@ def switch_database() -> Response | tuple[Response, int]:
     """Make an existing database (belonging to the current user) the
     active one for all their future requests."""
     name = (request.get_json(silent=True) or {}).get("name", "")
-    if not name or not name.replace("_", "").isalnum():
+    if not is_valid_db_name(name):
         return jsonify({"error": "Invalid name"}), 400
     if not (user_db_dir(g.user_id) / f"{name}.db").exists():
         return jsonify({"error": "Not found"}), 404
@@ -115,7 +115,7 @@ def delete_database(name: str) -> Response | tuple[Response, int]:
     """Permanently delete one of the current user's database files.
     Refuses to delete the active one (switch to a different database
     first) to avoid leaving the app with no active database mid-request."""
-    if not name or not name.replace("_", "").isalnum():
+    if not is_valid_db_name(name):
         return jsonify({"error": "Invalid name"}), 400
     path = user_db_dir(g.user_id) / f"{name}.db"
     if not path.exists():
@@ -261,7 +261,7 @@ def import_database() -> Response | tuple[Response, int]:
 
     if uploaded is None:
         return jsonify({"error": "file is required"}), 400
-    if not name or not name.replace("_", "").isalnum():
+    if not is_valid_db_name(name):
         return jsonify({"error": "Invalid name"}), 400
     if len(password) < MIN_EXPORT_PASSWORD_LENGTH:
         return jsonify({"error": f"password must be at least {MIN_EXPORT_PASSWORD_LENGTH} characters"}), 400

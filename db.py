@@ -186,6 +186,41 @@ CREATE INDEX IF NOT EXISTS idx_expenses_expense_date ON expenses(expense_date);
 """
 
 
+# The header a client uses to name which of its own databases a request
+# should run against, in place of relying on server-side "active database"
+# state. See resolve_request_database below.
+DATABASE_HEADER = "X-STC-Database"
+
+
+def is_valid_db_name(name: str) -> bool:
+    """Whether `name` is acceptable as one of a user's database names.
+
+    This is a security boundary, not a tidiness rule. Database names become
+    filenames directly (user_db_dir(user_id) / f"{name}.db"), so rejecting
+    anything but alphanumerics and underscores is what stops a name like
+    "../../etc/passwd" or "..%2Fother_user/secrets" escaping the user's own
+    directory. Keep it a deny-everything-else allowlist rather than
+    blacklisting the sequences that look dangerous today.
+
+    Was previously inline in four endpoints (create, switch, delete,
+    import). One copy, because a fifth caller now exists and the failure
+    mode of a copy drifting is silent.
+    """
+    return bool(name) and name.replace("_", "").isalnum()
+
+
+def user_has_database(user_id: int, name: str) -> bool:
+    """Whether this user owns a database called `name`.
+
+    The caller must have validated the name first - this builds a path from
+    it. Checking existence inside the user's OWN directory is what makes it
+    safe to let a client choose the database: the request names a database,
+    but it can only ever name one of its own, because nobody else's file is
+    in that directory to be found.
+    """
+    return (user_db_dir(user_id) / f"{name}.db").exists()
+
+
 def user_db_dir(user_id: int) -> Path:
     """The directory holding one user's databases and their backups
     (databases/<user_id>/), created on first use. Every user's data lives
@@ -375,10 +410,26 @@ def get_db() -> sqlite3.Connection:
     the global auth gate in app.py, so g.user_id is always present here.
     If this user has no database at all yet, a fresh "clearout" database
     is created for them and made active.
+
+    Which database, in priority order:
+
+      1. g.db_name, set from the X-STC-Database header by app.py's
+         _resolve_database hook (already validated and confirmed to be
+         this user's own file).
+      2. .active_db, this user's last explicit choice.
+
+    The header wins because it is the only one of the two that can differ
+    between two tabs. .active_db is per-USER state living in the user's
+    directory, so every tab that user has open necessarily shares it, and
+    switching database in one switches it under the others. Any
+    server-held "current database" has that problem by definition; making
+    the database a property of the request is the only thing that fixes
+    it. .active_db stays as the fallback, which demotes it from source of
+    truth to "the one this user had last".
     """
     if "db" not in g:
         user_id = g.user_id
-        name = get_active_db_name(user_id)
+        name = g.get("db_name") or get_active_db_name(user_id)
         if name is None:
             name = "clearout"
             init_database(user_id, name)

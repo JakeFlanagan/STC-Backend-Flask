@@ -111,6 +111,41 @@ def _require_auth() -> tuple[Response, int] | None:
     return check_auth()
 
 
+@app.before_request
+def _resolve_database() -> tuple[Response, int] | None:
+    """Read the X-STC-Database header and record the chosen database on g
+    for db.get_db() to use.
+
+    Runs after _require_auth, so g.user_id is already set by the time this
+    trusts anything. Registration order is what guarantees that: Flask runs
+    before_request hooks in the order they were registered, and an
+    unauthenticated request never reaches this one, because _require_auth
+    returns a 401 response and Flask short-circuits.
+
+    The header is trusted for CHOICE, never for IDENTITY. It says which
+    database, and the ownership check below is what makes that safe: the
+    name is validated as a filename, then looked for inside this user's own
+    directory. A client naming someone else's database gets a 404 for the
+    same reason it would if it named a database that never existed - there
+    is nothing of anyone else's in that directory to find.
+
+    Absent header means fall back to .active_db (see db.get_db), so an
+    older client keeps working unchanged while a newer one starts sending
+    it.
+    """
+    if request.method == "OPTIONS" or request.path in _PUBLIC_PATHS:
+        return None
+    requested = request.headers.get(db.DATABASE_HEADER)
+    if requested is None:
+        return None
+    if not db.is_valid_db_name(requested):
+        return jsonify({"error": f"Invalid {db.DATABASE_HEADER} header"}), 400
+    if not db.user_has_database(g.user_id, requested):
+        return jsonify({"error": "Not found"}), 404
+    g.db_name = requested
+    return None
+
+
 @app.errorhandler(HTTPException)
 def handle_http_exception(e: HTTPException) -> tuple[Response, int]:
     """Turn Flask/Werkzeug's own HTML error pages (404s, 405s, aborts, ...)

@@ -340,6 +340,42 @@ silently doing nothing or crash-looping.
   instance) - blank (the default) disables this entirely. Request bodies
   are never attached to error reports (`send_default_pii=False`).
 
+## Choosing a database per request
+
+Each account can have several databases. Which one a request runs against
+is chosen with a header:
+
+```
+X-STC-Database: clearout
+```
+
+Send it on every request. If it is absent, the request falls back to the
+account's `.active_db` marker (set by `POST /api/v1/databases/switch`), so
+a client that does not know about the header keeps working unchanged.
+
+**Why a header rather than server-side state.** `.active_db` is per-user,
+stored in the user's own directory, so every tab that user has open shares
+it. Switching database in one tab silently switched it under the others,
+mid-edit. That is not a bug in how the marker is stored - any "current
+database" the server holds is shared by definition. The only fix is to
+make the database a property of the request.
+
+**Why a header rather than a path segment.** `/api/v1/db/<name>/items`
+would mean touching every route in every blueprint to get the same result
+a header gets by being read in one place.
+
+The header says *which* database, never *whose*. The name is validated as
+a filename and then looked for inside the caller's own directory, so
+naming another account's database returns `404` for the same reason naming
+a database that never existed does - there is nothing of anyone else's in
+that directory to find. An invalid name is a `400` before any path is
+built from it.
+
+**Frontend note:** if you keep the selection in browser storage, use
+`sessionStorage`, not `localStorage`. `localStorage` is shared across
+every tab on an origin, which recreates the exact bug this header exists
+to fix, one layer up.
+
 ## Changing a password
 
 `POST /api/v1/auth/password {"current_password": "...", "new_password": "..."}`,
