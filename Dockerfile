@@ -40,11 +40,15 @@ ENV SC_DATA_DIR=/data
 # stays root-owned, and the app cannot write settings.cfg no matter what
 # USER is set below. Creating it here is what makes the two work together.
 #
+# /snapshots is the same story - it is a volume in the offsite-backup
+# profile (scripts/snapshot.py writes there), so it has to exist and be
+# owned here too, or the snapshot service starts and cannot write.
+#
 # An existing volume created before this change keeps its old root
 # ownership, because Docker only seeds a volume once. Upgrading needs a
 # one-off fix on the host:
 #   docker compose run --rm --user root backend chown -R 10001:10001 /data
-RUN mkdir -p /data && chown 10001:10001 /data
+RUN mkdir -p /data /snapshots && chown 10001:10001 /data /snapshots
 
 # Everything below runs unprivileged. The application code stays root-owned
 # and read-only to the app user, which is what you want: the only writable

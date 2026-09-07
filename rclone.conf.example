@@ -1,0 +1,64 @@
+# Copy to rclone.conf (gitignored) and fill in. Used by the `backup-sync`
+# service in docker-compose.yml's "offsite-backup" profile.
+#
+# Two remotes, not one. The first talks to your storage provider. The
+# second wraps it in rclone's crypt layer, which encrypts file contents
+# and names on this machine before anything is uploaded. Point
+# RCLONE_REMOTE at the SECOND one.
+#
+# Why bother, when the snapshot is already sitting unencrypted on the
+# host? Because the threat is different. The host already holds the
+# plaintext, so encrypting it there protects nothing. What crypt protects
+# against is the bucket: a snapshot contains JWT_SECRET,
+# DB_ENCRYPTION_KEY, and every user's data. Uploading that in the clear
+# hands all of it to whoever runs, subpoenas, or breaches the storage
+# provider.
+
+# ---------------------------------------------------------------------
+# 1. The storage provider.
+#
+# Cloudflare R2 shown here because it has no egress fees, which matters
+# on the day you actually restore. Backblaze B2, plain S3, or anything
+# else rclone speaks works the same way - run `rclone config` to generate
+# this section rather than hand-writing it.
+#
+# Worth considering: if your domain and DNS are already at Cloudflare,
+# putting the backups there too means one account lockout takes out both.
+# A different provider for backups is cheap insurance.
+# ---------------------------------------------------------------------
+[r2]
+type = s3
+provider = Cloudflare
+access_key_id = YOUR_ACCESS_KEY_ID
+secret_access_key = YOUR_SECRET_ACCESS_KEY
+endpoint = https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com
+acl = private
+
+# ---------------------------------------------------------------------
+# 2. The encryption layer. RCLONE_REMOTE should point HERE, e.g.
+#      RCLONE_REMOTE=stc-encrypted:
+#
+# Generate both values with:
+#   rclone obscure 'your long passphrase here'
+#   rclone obscure 'a different long salt here'
+#
+# `rclone obscure` is NOT encryption. It is reversible by anyone holding
+# this file, and it exists only so the passphrase is not sitting in plain
+# sight. Treat rclone.conf as a secret.
+#
+# ==> WRITE BOTH PASSPHRASES DOWN SOMEWHERE OFF THIS MACHINE. <==
+#
+# This is the step people skip. If the host dies, you will have an
+# encrypted bucket and no way into it, which is the same as having no
+# backup at all - with the added cost of having believed you had one.
+# A password manager entry is enough. Store the obscured strings, or the
+# originals, but store them somewhere that does not share a fate with
+# this server.
+# ---------------------------------------------------------------------
+[stc-encrypted]
+type = crypt
+remote = r2:your-bucket-name/stc-snapshots
+filename_encryption = standard
+directory_name_encryption = true
+password = OBSCURED_PASSPHRASE_FROM_RCLONE_OBSCURE
+password2 = OBSCURED_SALT_FROM_RCLONE_OBSCURE

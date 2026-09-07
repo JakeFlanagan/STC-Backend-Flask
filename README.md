@@ -169,12 +169,13 @@ doing before real users depend on this deployment:
   [Sentry](https://sentry.io) project's DSN (free tier available, or
   self-host) to get unhandled exceptions reported somewhere other than
   `docker compose logs`. See "Observability" below.
-- **Off-site backups.** Backups are encrypted but live on the same host/
-  volume as the live data - losing that host loses them too. Run `rclone
-  config` once, copy the resulting `rclone.conf` next to
-  `docker-compose.yml`, and set `RCLONE_REMOTE` to sync backups to S3/B2/
-  GCS/etc on a schedule. See "Off-site backups" below for the full
-  walkthrough.
+- **Off-site backups.** Backups are encrypted but live on the same host
+  and volume as the live data, so losing that host loses them too. The
+  `offsite-backup` profile adds a `snapshot` service (a consistent copy of
+  everything, `settings.cfg` included) and a `backup-sync` service that
+  pushes it to S3/R2/B2/GCS through an rclone `crypt` remote. See
+  "Off-site backups" below for the full walkthrough, including how to
+  restore.
 
 ## Configuration
 
@@ -240,38 +241,86 @@ secret needs to travel with the file. None of `databases/`, `auth.db`, or
 #### Off-site backups
 
 Everything above lives on the same `stc_data` volume as the live
-database - losing that host loses the backups too. The opt-in
-`backup-sync` service (profile `offsite-backup`) periodically syncs every
-account's encrypted `backups/` directories to a remote of your choice via
-[rclone](https://rclone.org) (S3, Backblaze B2, GCS, and dozens more -
-anything rclone supports). Not started by a plain `docker compose up`,
-nor by the `scale` profile: it needs your own remote + credentials, which
-this project has no way to provision for you.
+database, so losing that host loses the backups too. Two opt-in services
+in the `offsite-backup` profile fix that: `snapshot` takes a consistent
+copy of everything, and `backup-sync` pushes it to a remote of your choice
+via [rclone](https://rclone.org). Neither starts on a plain
+`docker compose up`, because the second one needs your own storage and
+credentials that this project cannot provision for you.
+
+**What a snapshot contains.** Everything under `SC_DATA_DIR`:
+`settings.cfg`, `auth.db`, every user's live `.db` file, and the encrypted
+`backups/` archives. Every database is copied with SQLite's online backup
+API rather than read off disk, so a snapshot taken while people are using
+the app is a complete database rather than whatever the file looked like
+partway through a write.
+
+`settings.cfg` is in there on purpose, and it is the part that matters
+most. The `backups/` archives are encrypted with `DB_ENCRYPTION_KEY`, and
+`DB_ENCRYPTION_KEY` lives in `settings.cfg`. An off-site copy without it
+is a pile of ciphertext with the key left behind on the machine you were
+protecting against.
+
+**Encrypt on the way out.** A snapshot holds `JWT_SECRET`,
+`DB_ENCRYPTION_KEY` and every user's data in the clear. That is fine on
+the host, which already has all of it in the clear, and unacceptable in
+someone else's bucket. Point `RCLONE_REMOTE` at an rclone `crypt` remote
+wrapping your storage remote, not at the storage remote directly. See
+`rclone.conf.example` for the two-remote layout.
 
 ```bash
-# 1. Configure a remote locally (interactive - pick your provider,
-#    supply its credentials):
-rclone config
-# This writes a config file (usually ~/.config/rclone/rclone.conf) -
-# copy it next to docker-compose.yml as `rclone.conf` (gitignored - it
-# holds your remote's credentials):
-cp ~/.config/rclone/rclone.conf ./rclone.conf
+# 1. Build a config from the example, or generate one interactively:
+cp rclone.conf.example rclone.conf   # then fill in your credentials
+#   ...or: rclone config && cp ~/.config/rclone/rclone.conf ./rclone.conf
 
-# 2. Point the sync at the remote you just configured (use the same name
-#    you gave it in step 1) and start the service:
-cat > .env.local <<'EOF'
-RCLONE_REMOTE=your-remote-name:your-bucket/stc-backups
+# 2. Point the sync at the CRYPT remote and start both services:
+cat > .env <<'EOF'
+RCLONE_REMOTE=stc-encrypted:
+SNAPSHOT_INTERVAL_SECONDS=21600
 BACKUP_SYNC_INTERVAL_SECONDS=21600
+SNAPSHOT_KEEP=7
 EOF
-docker compose --env-file .env --env-file .env.local --profile offsite-backup up -d backup-sync
+docker compose --profile offsite-backup up -d snapshot backup-sync
 ```
 
-Only `databases/<user_id>/backups/` subtrees are synced (already
-encrypted at rest with `DB_ENCRYPTION_KEY`) - never the live, currently-
-open `.db` files or `.active_db` markers, which change constantly and
-aren't what a point-in-time off-site copy is for. `docker compose logs -f
-backup-sync` shows each sync run; if `RCLONE_REMOTE` is unset it logs a
-clear warning instead of silently doing nothing or crash-looping.
+`SNAPSHOT_KEEP` is local disk only. That directory is a staging area; the
+retention that matters is whatever you set on the remote, because that is
+the copy that survives losing this host.
+
+**Write the crypt passphrases down somewhere else.** They are in
+`rclone.conf`, on the machine the backups exist to survive. If the host
+dies you will have an encrypted bucket and no way into it, which is worse
+than having no backup, because you spent the intervening months believing
+you had one.
+
+**Restoring.**
+
+```bash
+# 1. Fetch the newest snapshot through the same crypt remote:
+rclone lsf stc-encrypted: | sort | tail -1
+rclone copy "stc-encrypted:stc-20260907-041500.tar.gz" ./restore/
+
+# 2. Unpack it:
+tar -xzf ./restore/stc-*.tar.gz -C ./restore/
+
+# 3. Check it before you trust it. Every .db should say "ok":
+for f in $(find ./restore/stc -name '*.db'); do
+    echo "$f: $(sqlite3 "$f" 'PRAGMA integrity_check;')"
+done
+
+# 4. Load it into a fresh volume and start up:
+docker compose up -d app
+docker compose cp ./restore/stc/. app:/data/
+docker compose restart app
+```
+
+Test this before you need it. A backup nobody has restored is a
+hypothesis, not a backup - and the failure you are guarding against is
+exactly the situation in which you will least want to be finding out.
+
+`docker compose logs -f snapshot backup-sync` shows each run. If
+`RCLONE_REMOTE` is unset, the sync logs a clear warning rather than
+silently doing nothing or crash-looping.
 
 ## Observability
 

@@ -69,16 +69,49 @@ services:
       - scale
     restart: unless-stopped
 
+  # Takes a consistent snapshot of everything under /data on an interval.
+  # Uses this project's own image because it needs Python's sqlite3 module
+  # to copy live databases with the online backup API - a plain file copy
+  # of a database being written to produces a torn file. See
+  # scripts/snapshot.py.
+  #
+  # Opt-in, alongside backup-sync below, because a snapshot that never
+  # leaves the host is only half a backup.
+  snapshot:
+    build: .
+    profiles:
+      - offsite-backup
+    volumes:
+      - stc_data:/data
+      - stc_snapshots:/snapshots
+    environment:
+      - SC_DATA_DIR=/data
+      - SNAPSHOT_DIR=/snapshots
+      # How many snapshots to keep on local disk. This is a staging area,
+      # not the archive - retention that matters is whatever the remote
+      # below is set to keep, because that is the copy that survives
+      # losing this host.
+      - SNAPSHOT_KEEP=${SNAPSHOT_KEEP:-7}
+      - SNAPSHOT_INTERVAL_SECONDS=${SNAPSHOT_INTERVAL_SECONDS:-21600}
+    entrypoint: ["/bin/sh", "/app/scripts/run_snapshots.sh"]
+    restart: unless-stopped
+
   # Opt-in off-site backup sync - not started by a plain `docker compose
   # up`, nor by the default `scale` profile (unlike redis): this needs a
   # real remote destination and credentials this project has no way to
   # provision for you. See README's "Off-site backups".
+  #
+  # Reads the snapshots volume, not /data. Point RCLONE_REMOTE at an
+  # rclone `crypt` remote: a snapshot holds JWT_SECRET, DB_ENCRYPTION_KEY
+  # and every user's data unencrypted, because encrypting it on the host
+  # that already has the plaintext protects nothing. Encrypting it on the
+  # way out is what keeps it from whoever runs the bucket.
   backup-sync:
     image: rclone/rclone:latest
     profiles:
       - offsite-backup
     volumes:
-      - stc_data:/data:ro
+      - stc_snapshots:/snapshots:ro
       - ./rclone.conf:/config/rclone/rclone.conf:ro
       - ./scripts/sync_backups.sh:/sync_backups.sh:ro
     environment:
@@ -89,5 +122,6 @@ services:
 
 volumes:
   stc_data:
+  stc_snapshots:
   caddy_data:
   caddy_config:

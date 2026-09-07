@@ -1,16 +1,30 @@
 #!/bin/sh
-# Periodically syncs every account's encrypted backups directory to a
-# remote rclone target - see README's "Off-site backups". Runs inside the
-# opt-in `backup-sync` compose service (docker-compose.yml, profile
-# "offsite-backup").
+# Copies snapshots to a remote rclone target - see README's "Off-site
+# backups". Runs inside the opt-in `backup-sync` compose service
+# (docker-compose.yml, profile "offsite-backup").
 #
 # Requires:
 #   - RCLONE_REMOTE set to a configured rclone remote:path (e.g.
-#     "s3remote:my-bucket/stc-backups")
+#     "stc-encrypted:stc-snapshots")
 #   - rclone.conf mounted at /config/rclone/rclone.conf with that remote
-#     already configured (create locally with `rclone config`, copy the
-#     resulting file next to docker-compose.yml - see README; gitignored,
-#     it holds your remote's credentials)
+#     already configured (see rclone.conf.example; gitignored, it holds
+#     your remote's credentials)
+#
+# The source is /snapshots, written by the `snapshot` service. It used to
+# be /data/databases with an --include for backups/**, which copied only
+# the archives a user had explicitly asked the app to create. That left
+# out the live databases, and it left out settings.cfg entirely - which
+# holds DB_ENCRYPTION_KEY, the key those archives are encrypted with. The
+# result was an off-site copy that could not be decrypted using anything
+# else in the off-site copy. See scripts/snapshot.py for the longer
+# version.
+#
+# ENCRYPTION: point RCLONE_REMOTE at an rclone `crypt` remote, not
+# directly at the bucket. A snapshot contains JWT_SECRET,
+# DB_ENCRYPTION_KEY and every user's data in the clear, because the host
+# already has all of that in the clear and encrypting it there protects
+# nothing. Encrypting it on the way out is what stops whoever runs the
+# bucket from reading it. rclone.conf.example shows the two-remote setup.
 #
 # A plain loop + sleep, not cron: the official rclone image is a single
 # static binary with no cron daemon, and pulling one in just for this
@@ -32,16 +46,8 @@ fi
 interval="${BACKUP_SYNC_INTERVAL_SECONDS:-21600}"
 
 while true; do
-    echo "sync_backups.sh: syncing backups to ${RCLONE_REMOTE}..."
-    # Source is /data/databases (see config.py's DB_DIR under
-    # SC_DATA_DIR) - every account's databases/<user_id>/backups/<db
-    # name>/ tree. --include targets only the backups/ subdirectories,
-    # not the live .db files or .active_db marker: those change
-    # constantly and aren't what an off-site copy is for - the backups
-    # (already encrypted at rest with settings.cfg's DB_ENCRYPTION_KEY,
-    # see blueprints/databases.py) are the point-in-time snapshots worth
-    # copying off-host.
-    if rclone sync /data/databases "${RCLONE_REMOTE}" --include "*/backups/**" -v; then
+    echo "sync_backups.sh: syncing snapshots to ${RCLONE_REMOTE}..."
+    if rclone sync /snapshots "${RCLONE_REMOTE}" -v; then
         echo "sync_backups.sh: sync completed"
     else
         echo "sync_backups.sh: sync failed, will retry next interval" >&2
