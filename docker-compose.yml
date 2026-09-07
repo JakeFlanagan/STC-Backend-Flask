@@ -26,7 +26,10 @@ services:
     expose:
       - "5000"
     environment:
-      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
+      # 1, not 4. Anything above one worker needs SC_REDIS_URL set as
+      # well, or rate limiting silently degrades to per-process in-memory
+      # counters. See the Dockerfile's note above its CMD.
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-1}
       - SC_REDIS_URL=${SC_REDIS_URL:-}
     restart: unless-stopped
 
@@ -44,9 +47,17 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Started by default via the committed .env's COMPOSE_PROFILES=scale -
-  # see README's "Scaling beyond one worker" for the single-worker/no-
-  # Redis opt-out. No published port: reachable only from app/caddy over
+  # NOT started by a plain `docker compose up`. It sits behind the "scale"
+  # profile, and a compose file cannot enable its own profile, so this only
+  # runs when you ask for it:
+  #
+  #   COMPOSE_PROFILES=scale docker compose up -d
+  #
+  # and then set GUNICORN_WORKERS and SC_REDIS_URL to match. Until you do,
+  # the app runs one worker with in-process rate limiting, which is correct,
+  # just not scalable. There is no committed .env doing this for you - .env
+  # is gitignored, so it never ships. See README's "Scaling beyond one
+  # worker". No published port: reachable only from app/caddy over
   # the compose-internal network - REDIS_PASSWORD is blank (no auth) by
   # default because of that; set it (and update SC_REDIS_URL to match -
   # see README) only if this service ever needs to be reachable beyond

@@ -99,32 +99,36 @@ where it lives on disk).
 
 #### Scaling beyond one worker
 
-`docker compose up` runs multiple gunicorn workers with Redis-backed rate
-limiting by default (see the committed `.env`: `GUNICORN_WORKERS=4`,
-`SC_REDIS_URL=redis://redis:6379/0`, `COMPOSE_PROFILES=scale` - the last
-one is what starts the `redis` service at all). No extra steps needed.
+`docker compose up` runs **one** gunicorn worker with in-memory rate
+limiting and no Redis container. That is the default on purpose, and it is
+the only combination that is correct out of the box.
 
-To change the worker count, override `GUNICORN_WORKERS` in your own shell
-env or an untracked `.env.local`-style file:
+Rate limiting is the reason. `flask-limiter` falls back to in-memory
+storage when `SC_REDIS_URL` is blank, and in-memory counters live in a
+single process. Run four workers against them and every limit becomes
+roughly four times looser and non-deterministic, depending on which worker
+happens to answer. Worse, nothing warns you: the app starts cleanly and
+serves traffic, it just is not enforcing the limits you think it is. A
+default that is quietly wrong is worse than one that is merely slow, so
+the default is one worker.
 
-```bash
-echo "GUNICORN_WORKERS=8" >> .env.local
-docker compose --env-file .env --env-file .env.local up -d --force-recreate app
-```
-
-##### Running single-worker without Redis
-
-To go back to a single worker with in-memory rate limiting (no Redis
-container at all), override all three defaults:
+To scale up, turn on Redis and raise the worker count together. They are
+one decision, not two:
 
 ```bash
-cat > .env.local <<'EOF'
-COMPOSE_PROFILES=
-SC_REDIS_URL=
-GUNICORN_WORKERS=1
+cat > .env <<'EOF'
+COMPOSE_PROFILES=scale
+SC_REDIS_URL=redis://redis:6379/0
+GUNICORN_WORKERS=4
 EOF
-docker compose --env-file .env --env-file .env.local up -d --force-recreate app
+docker compose up -d
 ```
+
+`COMPOSE_PROFILES=scale` is what starts the `redis` service at all. A
+compose file cannot enable its own profile, which is exactly why the safe
+setting has to be the default rather than something a config file switches
+on for you. `.env` is gitignored, so it is yours to write and it is never
+shipped.
 
 ##### Password-protecting Redis
 

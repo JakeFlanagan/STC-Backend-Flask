@@ -50,13 +50,19 @@ RUN mkdir -p /data && chown 10001:10001 /data
 # and read-only to the app user, which is what you want: the only writable
 # paths are /data and the tmpfs at /tmp.
 USER 10001
+
+# GUNICORN_WORKERS defaults to 1, and that default is deliberate.
+# rate_limit.py's per-IP throttling needs Redis-backed storage shared
+# across processes once more than one worker runs. Without SC_REDIS_URL,
+# flask-limiter falls back to in-memory counters that are per-process, so
+# four workers make every limit roughly four times looser and
+# non-deterministic - and it degrades silently, which is the dangerous
+# part. One worker is the only setting that is correct with no Redis, so
+# it is the only safe default for a fresh clone.
 #
-# GUNICORN_WORKERS defaults to 4 and SC_REDIS_URL defaults to Redis
-# (docker-compose.yml's committed .env sets both) - rate_limit.py's
-# per-IP throttling needs Redis-backed storage shared across processes
-# once more than one worker is running; in-memory storage (SC_REDIS_URL
-# unset) only works correctly with a single worker. See README's
-# "Scaling beyond one worker" for the single-worker/no-Redis opt-out.
+# To run more, set both GUNICORN_WORKERS and SC_REDIS_URL together. See
+# README's "Scaling beyond one worker".
+#
 # wsgi:app, not app:app - only the wsgi module runs migrations + the
 # admin-account bootstrap at import time (see wsgi.py/app.py's
 # bootstrap()); gunicorn never executes app.py's `if __name__ ==
@@ -70,4 +76,4 @@ USER 10001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD python3 -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:5000/api/v1/health', timeout=2).status == 200 else 1)"
 
-CMD ["sh", "-c", "gunicorn -w ${GUNICORN_WORKERS:-4} -b 0.0.0.0:5000 wsgi:app"]
+CMD ["sh", "-c", "gunicorn -w ${GUNICORN_WORKERS:-1} -b 0.0.0.0:5000 wsgi:app"]
