@@ -2,7 +2,23 @@
 # host) - Caddy automatically provisions and renews a real TLS certificate
 # for it via Let's Encrypt on first request, no manual cert management.
 localhost {
-	reverse_proxy app:5000
+	# observability.py puts /metrics in _PUBLIC_PATHS with no auth of its
+	# own, and its docstring says to block it at the proxy if it should not
+	# be public. This is that block. It leaks route names, request counts
+	# and latency histograms, which is a free map of the API. Put it behind
+	# an authenticating proxy on a separate hostname if you want to scrape
+	# it.
+	#
+	# handle blocks rather than a bare `respond`: Caddy applies its own
+	# directive order to a plain directive list, and reverse_proxy would
+	# win. handle blocks are evaluated in the order written.
+	handle /metrics {
+		respond 404
+	}
+
+	handle {
+		reverse_proxy app:5000
+	}
 
 	# This backend is JSON-API-only (see app.py's docstring - no template
 	# rendering, no static files), so the header policy can be maximally
