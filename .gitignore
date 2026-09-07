@@ -13,3 +13,4 @@ docker-compose.override.yml
 rclone.conf
 .env
 *.db.enc
+.venv/

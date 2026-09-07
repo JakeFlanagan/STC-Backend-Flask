@@ -9,8 +9,12 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# The lock, not requirements.txt: the lock pins transitive dependencies
+# too, so the image CI builds today and the one it builds next month
+# contain the same code. requirements.txt stays the human-edited list of
+# direct dependencies.
+COPY requirements.lock .
+RUN pip install --no-cache-dir -r requirements.lock
 
 COPY . .
 

@@ -40,9 +40,13 @@ jobs:
       # tooling (pytest, mypy, ...) is deliberately not included here,
       # same reasoning requirements-dev.txt itself gives for layering on
       # top of requirements.txt rather than replacing it.
+      #
+      # Scans the lock rather than requirements.txt so that transitive
+      # dependencies are covered too. They are the ones most likely to
+      # carry a CVE nobody chose to install.
       - uses: pypa/gh-action-pip-audit@v1.1.0
         with:
-          inputs: requirements.txt
+          inputs: requirements.lock
       # Runs gitleaks' CLI directly via its official image, not the
       # gitleaks-action wrapper - that wrapper requires a paid
       # GITLEAKS_LICENSE for any org-owned repo beyond the first, which
