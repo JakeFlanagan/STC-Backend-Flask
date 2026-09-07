@@ -101,3 +101,14 @@ PASSWORD_RESET_EXPIRY_MINUTES=30
 # overwrites X-Forwarded-For with the true client address is not an extra
 # hop.
 TRUSTED_PROXY_HOPS=1
+
+# Set to 1 automatically once the admin account has been created in
+# auth.db. Leave it at 0 in a fresh file.
+#
+# It exists so that ADMIN_PASSWORD above can be cleared after first start-up
+# and stay cleared. ADMIN_PASSWORD is only ever read once, to create the
+# account; it is never used to reset one. Without this flag a blank
+# ADMIN_PASSWORD would look like "not generated yet" on the next start-up,
+# so a fresh password would be minted and announced for an account that has
+# existed for months.
+ADMIN_BOOTSTRAPPED=0

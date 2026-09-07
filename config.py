@@ -73,6 +73,10 @@ _DEFAULTS: dict[str, str] = {
     "DB_ENCRYPTION_KEY": "",
     "ADMIN_USERNAME": "admin",
     "ADMIN_PASSWORD": "",
+    # Set to 1 once the admin account actually exists in auth.db (see
+    # mark_admin_bootstrapped below). While it is 0, a blank ADMIN_PASSWORD
+    # is treated as "not created yet" and gets generated.
+    "ADMIN_BOOTSTRAPPED": "0",
     "ALLOWED_ORIGINS": "http://localhost:*,http://127.0.0.1:*",
     "REDIS_URL": "",
     "LOG_LEVEL": "INFO",
@@ -155,6 +159,13 @@ def _load_or_create_settings(settings_path: Path) -> dict[str, str]:
     ADMIN_PASSWORD is one of the keys generated this call, it's printed to
     the console once, since this is the only time this password will ever
     be visible outside of settings.cfg itself.
+
+    ADMIN_PASSWORD is the one generated key that is deliberately allowed to
+    go back to blank permanently: mark_admin_bootstrapped() clears it once
+    the account exists, and ADMIN_BOOTSTRAPPED=1 is what stops this
+    function generating a replacement on the next start-up. Without that
+    flag, clearing the plaintext password would simply mint a new one and
+    print a "Admin created" line for an account created months ago.
     """
     if not settings_path.exists():
         settings_path.write_text(
@@ -168,6 +179,8 @@ def _load_or_create_settings(settings_path: Path) -> dict[str, str]:
 
     admin_password_generated = False
     for key in _GENERATED_KEYS:
+        if key == "ADMIN_PASSWORD" and values.get("ADMIN_BOOTSTRAPPED") == "1":
+            continue  # account already exists - a blank value here is correct, not missing
         if not values.get(key):
             values[key] = _generate_value(key)
             set_key(str(settings_path), key, values[key], quote_mode="never")
@@ -182,6 +195,27 @@ def _load_or_create_settings(settings_path: Path) -> dict[str, str]:
         )
 
     return values
+
+
+def mark_admin_bootstrapped() -> None:
+    """Record that the admin account exists, and drop the plaintext
+    ADMIN_PASSWORD from settings.cfg now that nothing will ever read it
+    again.
+
+    ADMIN_PASSWORD is only ever used once, by
+    auth_db.ensure_admin_account, which creates the account and never
+    resets it. Leaving the plaintext on disk afterwards buys nothing and
+    parks a working credential next to the hash it produced, in a file that
+    also holds JWT_SECRET and DB_ENCRYPTION_KEY.
+
+    Safe to call on every start-up: both writes are idempotent, and the
+    second and later calls have nothing left to clear."""
+    if _settings.get("ADMIN_BOOTSTRAPPED") == "1" and not _settings.get("ADMIN_PASSWORD"):
+        return
+    set_key(str(SETTINGS_FILE), "ADMIN_BOOTSTRAPPED", "1", quote_mode="never")
+    set_key(str(SETTINGS_FILE), "ADMIN_PASSWORD", "", quote_mode="never")
+    _settings["ADMIN_BOOTSTRAPPED"] = "1"
+    _settings["ADMIN_PASSWORD"] = ""
 
 
 # Where settings.cfg lives - same directory BASE_DIR resolves to for

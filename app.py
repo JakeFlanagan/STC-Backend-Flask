@@ -161,6 +161,12 @@ def bootstrap() -> None:
     migrations.run_migrations()
     with app.app_context():
         auth_db.ensure_admin_account(auth_db.get_auth_db(), config.ADMIN_USERNAME, config.ADMIN_PASSWORD)
+        # The account now exists, so the plaintext ADMIN_PASSWORD in
+        # settings.cfg has done its only job. Clearing it here rather than
+        # leaving it on disk next to the hash it produced - see
+        # config.mark_admin_bootstrapped for why the flag is needed as well
+        # as the blank.
+        config.mark_admin_bootstrapped()
 
 
 if __name__ == "__main__":

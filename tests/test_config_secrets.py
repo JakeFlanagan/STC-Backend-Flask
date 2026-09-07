@@ -126,3 +126,43 @@ def test_resolve_redis_url_falls_back_when_env_var_is_blank(monkeypatch):
     monkeypatch.setenv("SC_REDIS_URL", "")
     result = config._resolve_redis_url({"REDIS_URL": "redis://from-settings:6379/0"})
     assert result == "redis://from-settings:6379/0"
+
+
+def test_bootstrapped_flag_stops_a_blank_admin_password_being_regenerated(tmp_path, capsys):
+    """Once the admin account exists, a blank ADMIN_PASSWORD means "no
+    longer needed", not "never generated". Without the flag, clearing the
+    plaintext would mint a replacement on the next start-up and announce
+    the creation of an account that already existed."""
+    settings_path = tmp_path / "settings.cfg"
+    settings_path.write_text(
+        "JWT_SECRET=already-set\n"
+        "DB_ENCRYPTION_KEY=already-set\n"
+        "ADMIN_USERNAME=root\n"
+        "ADMIN_PASSWORD=\n"
+        "ADMIN_BOOTSTRAPPED=1\n"
+    )
+
+    values = config._load_or_create_settings(settings_path)
+
+    assert values["ADMIN_PASSWORD"] == "", "a bootstrapped admin password must stay blank"
+    assert "ADMIN_PASSWORD=\n" in settings_path.read_text(), "nothing should have been written back"
+    assert "Admin created" not in capsys.readouterr().out
+
+
+def test_blank_admin_password_is_still_generated_before_bootstrap(tmp_path, capsys):
+    """The mirror image of the test above: with the flag at its 0 default,
+    a blank password is a genuinely missing one and must be generated, or a
+    fresh install would have no way to log in at all."""
+    settings_path = tmp_path / "settings.cfg"
+    settings_path.write_text(
+        "JWT_SECRET=already-set\n"
+        "DB_ENCRYPTION_KEY=already-set\n"
+        "ADMIN_USERNAME=root\n"
+        "ADMIN_PASSWORD=\n"
+        "ADMIN_BOOTSTRAPPED=0\n"
+    )
+
+    values = config._load_or_create_settings(settings_path)
+
+    assert values["ADMIN_PASSWORD"], "a pre-bootstrap blank password must be generated"
+    assert "Admin created" in capsys.readouterr().out
