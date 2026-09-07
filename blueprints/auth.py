@@ -1,4 +1,4 @@
-"""Account endpoints: register, login, refresh, logout.
+"""Account endpoints: register, login, refresh, logout, password change.
 
 Unlike every other blueprint, these routes are exempt from app.py's global
 _require_auth before_request hook (see its _PUBLIC_PATHS) - you need to be
@@ -137,6 +137,43 @@ def set_email() -> Response | tuple[Response, int]:
     if not auth_db.set_user_email(db, g.user_id, email):
         return jsonify({"error": "email already in use"}), 409
     return jsonify({"ok": True})
+
+
+@auth_bp.route("/password", methods=["POST"])
+@limiter.limit("10 per hour")
+def change_password() -> Response | tuple[Response, int]:
+    """Change the caller's own password, given their current one.
+
+    Authenticated (not in app.py's _PUBLIC_PATHS), so g.user_id and
+    g.username are already set by the global auth gate. The current
+    password is still required on top of that: an access token can be
+    stolen, and without this check a stolen token could be traded for
+    permanent ownership of the account.
+
+    Rate limited because it is an oracle. Without a limit, anyone holding a
+    token could guess the current password here as fast as they liked,
+    which would quietly undo the per-username lockout that login() is
+    protected by.
+
+    Every session is ended, including the caller's own, so a successful
+    change is followed by a 200 and then a re-login rather than by new
+    tokens. Handing back a fresh pair here would be friendlier and also
+    wrong: check_auth compares a token's "iat" against tokens_revoked_at
+    with <=, and both have one-second resolution, so a token minted in the
+    same wall-clock second as the revoke is rejected anyway. Better an
+    honest re-login than a token that works or not depending on timing."""
+    d = request.get_json(silent=True) or {}
+    current_password = d.get("current_password", "")
+    new_password = d.get("new_password", "")
+    if not current_password or not new_password:
+        return jsonify({"error": "current_password and new_password are required"}), 400
+    if len(new_password) < MIN_PASSWORD_LENGTH:
+        return jsonify({"error": f"password must be at least {MIN_PASSWORD_LENGTH} characters"}), 400
+    db = auth_db.get_auth_db()
+    if auth_db.verify_user(db, g.username, current_password) is None:
+        return jsonify({"error": "current password is incorrect"}), 401
+    auth_db.set_user_password(db, g.user_id, new_password)
+    return jsonify({"ok": True, "sessions_revoked": True})
 
 
 @auth_bp.route("/password-reset/request", methods=["POST"])

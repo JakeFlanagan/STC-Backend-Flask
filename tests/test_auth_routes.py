@@ -361,3 +361,86 @@ def test_password_reset_confirm_rejects_short_password():
     c = app_module.app.test_client()
     resp = c.post("/api/v1/auth/password-reset/confirm", json={"token": "whatever", "new_password": "short"})
     expect("status code", 400, resp.status_code)
+
+
+def _register_and_get_tokens(c, username, password="password123"):
+    """Create a fresh account and return its (access, refresh) pair."""
+    body = c.post("/api/v1/auth/register", json={"username": username, "password": password}).get_json()
+    return body["access_token"], body["refresh_token"]
+
+
+def test_change_password_lets_the_new_password_log_in():
+    c = app_module.app.test_client()
+    username = _unique_username()
+    access, _ = _register_and_get_tokens(c, username)
+
+    resp = c.post(
+        "/api/v1/auth/password",
+        json={"current_password": "password123", "new_password": "brand-new-password"},
+        headers={"Authorization": f"Bearer {access}"},
+    )
+    expect("status code", 200, resp.status_code)
+
+    new_login = c.post("/api/v1/auth/login", json={"username": username, "password": "brand-new-password"})
+    expect("the new password logs in", 200, new_login.status_code)
+    old_login = c.post("/api/v1/auth/login", json={"username": username, "password": "password123"})
+    expect("the old password does not", 401, old_login.status_code)
+
+
+def test_change_password_requires_the_current_one():
+    """A stolen access token must not be tradeable for permanent ownership
+    of the account, which is what a change endpoint that trusted the token
+    alone would allow."""
+    c = app_module.app.test_client()
+    username = _unique_username()
+    access, _ = _register_and_get_tokens(c, username)
+
+    resp = c.post(
+        "/api/v1/auth/password",
+        json={"current_password": "not-the-password", "new_password": "brand-new-password"},
+        headers={"Authorization": f"Bearer {access}"},
+    )
+    expect("status code", 401, resp.status_code)
+    still_works = c.post("/api/v1/auth/login", json={"username": username, "password": "password123"})
+    expect("the original password is untouched", 200, still_works.status_code)
+
+
+def test_change_password_rejects_a_short_new_password():
+    c = app_module.app.test_client()
+    access, _ = _register_and_get_tokens(c, _unique_username())
+    resp = c.post(
+        "/api/v1/auth/password",
+        json={"current_password": "password123", "new_password": "short"},
+        headers={"Authorization": f"Bearer {access}"},
+    )
+    expect("status code", 400, resp.status_code)
+
+
+def test_change_password_revokes_every_existing_session():
+    """Both halves matter. The refresh token is stored, so revoking it is
+    a row update; the access token is stateless, so only tokens_revoked_at
+    can reach one already issued."""
+    c = app_module.app.test_client()
+    username = _unique_username()
+    access, refresh = _register_and_get_tokens(c, username)
+
+    c.post(
+        "/api/v1/auth/password",
+        json={"current_password": "password123", "new_password": "brand-new-password"},
+        headers={"Authorization": f"Bearer {access}"},
+    )
+
+    reused = c.post("/api/v1/auth/refresh", json={"refresh_token": refresh})
+    expect("the old refresh token is dead", 401, reused.status_code)
+
+    with_old_access = c.get("/api/v1/settings", headers={"Authorization": f"Bearer {access}"})
+    expect("the already-issued access token is dead too", 401, with_old_access.status_code)
+
+
+def test_change_password_requires_authentication():
+    c = app_module.app.test_client()
+    resp = c.post(
+        "/api/v1/auth/password",
+        json={"current_password": "password123", "new_password": "brand-new-password"},
+    )
+    expect("status code", 401, resp.status_code)

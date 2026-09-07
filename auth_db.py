@@ -287,6 +287,35 @@ def get_reused_refresh_token_owner(db: sqlite3.Connection, token_hash: str) -> i
     return row["user_id"]
 
 
+def set_user_password(db: sqlite3.Connection, user_id: int, new_password: str) -> None:
+    """Set an account's password and end every existing session for it.
+
+    The session teardown is not optional politeness. A password change is
+    either "I think someone else may have this" or "I am tidying up", and
+    only the first matters; treating both as the first costs one re-login
+    and covers the case that actually hurts. Same reasoning
+    consume_password_reset already applies, which is why both funnel
+    through revoke_all_refresh_tokens_for_user - that is what stamps
+    tokens_revoked_at, and tokens_revoked_at is the only thing that can
+    reach an access token already in someone's hands.
+
+    All three writes land in one transaction rather than calling
+    revoke_all_refresh_tokens_for_user, which commits on its own. Splitting
+    them would leave a window where the password had changed but the old
+    sessions were still live, which is the exact window this is meant to
+    close.
+
+    The caller is responsible for having checked the current password
+    first. This function does not verify anything."""
+    db.execute(
+        "UPDATE users SET password_hash = ? WHERE id = ?",
+        (generate_password_hash(new_password), user_id),
+    )
+    db.execute("UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?", (user_id,))
+    db.execute("UPDATE users SET tokens_revoked_at = datetime('now') WHERE id = ?", (user_id,))
+    db.commit()
+
+
 def revoke_all_refresh_tokens_for_user(db: sqlite3.Connection, user_id: int) -> None:
     """Revoke every refresh token belonging to user_id - called when a
     rotated-out refresh token gets reused (see was_refresh_token_revoked),

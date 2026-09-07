@@ -43,9 +43,14 @@ Change this password after first login.
 
 Write that password down - it's never shown again after this first run
 (it's stored, hashed, in `auth.db`, not recoverable from there). Log in
-with it via `POST /api/v1/auth/login` and change it via your frontend's
-account settings, or leave `ADMIN_PASSWORD` set in `settings.cfg` if you'd
-rather pin it yourself.
+with it via `POST /api/v1/auth/login`, then change it with
+`POST /api/v1/auth/password` (see "Changing a password" below).
+
+`ADMIN_PASSWORD` is cleared from `settings.cfg` automatically once the
+account exists, and `ADMIN_BOOTSTRAPPED` is set to `1` to record that it
+was. Putting a value back in `ADMIN_PASSWORD` afterwards does nothing:
+`ensure_admin_account` only ever *creates* the account, it never resets
+one.
 
 `SC_DEBUG=1 python3 app.py` turns on Werkzeug's interactive debugger and
 auto-reloader for local development - off by default, since leaving it on
@@ -192,7 +197,8 @@ the app.
 | `REFRESH_EXPIRY_DAYS` | `30` | How long a refresh token is valid. |
 | `DB_ENCRYPTION_KEY` | auto-generated | Encrypts backup/auto-backup files at rest. Losing/rotating this makes existing backups permanently undecryptable. |
 | `ADMIN_USERNAME` | `admin` | First admin account, created on first run. |
-| `ADMIN_PASSWORD` | auto-generated | Printed once to the console the first time the app starts with no existing `settings.cfg`. Change it after first login. |
+| `ADMIN_PASSWORD` | auto-generated | Printed once to the console the first time the app starts with no existing `settings.cfg`, then cleared from the file once the account exists. Only ever used to create the admin account, never to reset it. |
+| `ADMIN_BOOTSTRAPPED` | `0` | Set to `1` automatically once the admin account exists. Stops a cleared `ADMIN_PASSWORD` being read as "never generated" and re-minted on the next start-up. |
 | `ALLOWED_ORIGINS` | `http://localhost:*,http://127.0.0.1:*` | Comma-separated CORS origins. Add your real frontend origin before hosting anywhere other than localhost. |
 | `REDIS_URL` | blank | Set to a `redis://` URL to share rate-limit counters across multiple gunicorn workers - see "Scaling beyond one worker". Docker sets this via `SC_REDIS_URL` instead (below) by default; this key matters for Option A or a manual override. |
 | `LOG_LEVEL` | `INFO` | Minimum level logged - see "Observability" below. |
@@ -206,6 +212,7 @@ the app.
 | `SMTP_USE_TLS` | `1` | Set to `0` to disable STARTTLS (only for an SMTP server that doesn't support it). |
 | `APP_BASE_URL` | `http://localhost:3000` | Frontend origin a password-reset email's link points at - see "Password reset" below. |
 | `PASSWORD_RESET_EXPIRY_MINUTES` | `30` | How long a password-reset link stays valid. |
+| `TRUSTED_PROXY_HOPS` | `1` | How many reverse proxies in front of this backend are trusted to have appended to `X-Forwarded-For`. Too low and every client shares one rate-limit bucket; too high and a client can forge its own address. |
 
 Environment variables (as opposed to `settings.cfg` keys) that matter:
 
@@ -284,6 +291,27 @@ clear warning instead of silently doing nothing or crash-looping.
   instance) - blank (the default) disables this entirely. Request bodies
   are never attached to error reports (`send_default_pii=False`).
 
+## Changing a password
+
+`POST /api/v1/auth/password {"current_password": "...", "new_password": "..."}`,
+authenticated. Returns `200` on success.
+
+The current password is required even though the request already carries a
+valid access token. A token can be stolen; without this check, a stolen one
+could be traded for permanent ownership of the account. The route is rate
+limited to 10 attempts an hour for the same reason - otherwise it would be
+a password-guessing oracle that bypasses the per-username login lockout.
+
+Every session is ended on success, including the caller's own, so the
+response is a `200` and then a fresh login rather than a new token pair.
+Handing back new tokens here would be friendlier and also unreliable:
+`check_auth` compares a token's `iat` against `tokens_revoked_at` using
+`<=`, and both have one-second resolution, so a token minted in the same
+second as the revoke is rejected anyway.
+
+If the current password has been forgotten rather than merely changed, use
+the reset flow below instead.
+
 ## Password reset
 
 Accounts have an optional `email` (set at registration, or afterward via
@@ -334,6 +362,7 @@ works.
 - **Authentication:** every `/api/v1/*` route except `/health`,
   `/metrics`, and `/auth/*` (except `/auth/email`, which requires auth)
   requires a valid JWT access token (`Authorization: Bearer <token>`).
+  `/auth/password` also requires auth, on top of the current password.
   Register/login via `/api/v1/auth/register` and `/login`; refresh via
   `/refresh` before the access token expires (`JWT_EXPIRY_MINUTES` in
   `settings.cfg`, default 60). `/register` accepts an optional `email`
