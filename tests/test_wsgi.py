@@ -2,8 +2,7 @@
 waitress) imports instead of running `python3 app.py`, which never
 executes app.py's `__main__` block (see app.py's bootstrap() docstring).
 Confirms importing wsgi actually runs that bootstrap (migrations +
-admin-account creation) rather than silently skipping it, which was the
-exact gap TODO.md flagged.
+admin-account creation) rather than silently skipping it.
 """
 
 import app as app_module

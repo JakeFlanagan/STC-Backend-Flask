@@ -412,9 +412,9 @@ def list_users(db: sqlite3.Connection) -> list[dict[str, Any]]:
 def list_lockouts(db: sqlite3.Connection) -> list[dict[str, Any]]:
     """Return every username currently locked out of login (locked_until
     in the future), soonest-expiring first - the data
-    GET /api/v1/admin/lockouts (blueprints/admin.py) surfaces. Closes the
-    TODO.md gap where an operator investigating "I can't log in" had to
-    query auth.db directly."""
+    GET /api/v1/admin/lockouts (blueprints/admin.py) surfaces, so that an
+    operator investigating "I can't log in" does not have to query auth.db
+    directly."""
     rows = db.execute(
         "SELECT username, locked_until FROM login_failures "
         "WHERE locked_until IS NOT NULL AND locked_until > datetime('now') "

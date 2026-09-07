@@ -1,7 +1,7 @@
 """Exercises rate_limit.py's Redis storage path (config.REDIS_URL /
-SC_REDIS_URL set) against a real Redis instance - closing the TODO.md gap
-where only _storage_uri()'s selection logic was unit tested, never the
-actual shared-counter behavior multiple gunicorn workers rely on.
+SC_REDIS_URL set) against a real Redis instance. Without this, only
+_storage_uri()'s selection logic would be covered, never the actual
+shared-counter behavior multiple gunicorn workers rely on.
 
 Skipped entirely if no Redis is reachable at TEST_REDIS_URL (defaults to
 redis://localhost:6379/0) - CI's tests.yml starts one as a service

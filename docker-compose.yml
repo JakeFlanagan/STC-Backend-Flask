@@ -1,6 +1,6 @@
 # Reference deployment: this backend behind Caddy doing real TLS
-# termination (see TODO.md's now-resolved "no TLS anywhere" item - this
-# backend still never terminates TLS itself, Caddy does it in front).
+# termination. The backend itself never terminates TLS; Caddy does it in
+# front.
 #
 # Before first `docker compose up`:
 #   1. Edit Caddyfile: replace the placeholder domain with your real one,
@@ -11,9 +11,9 @@
 #      to ALLOWED_ORIGINS (see settings.cfg.example's comment on that key).
 #
 # stc_data is a single directory volume holding settings.cfg, auth.db, and
-# databases/ (see config.py's SC_DATA_DIR / Dockerfile) - exactly the
-# paths TODO.md flagged as needing to persist across restarts, or every
-# restart would regenerate settings.cfg's secrets from scratch and
+# databases/ (see config.py's SC_DATA_DIR / Dockerfile). These paths must
+# persist across restarts, or every restart would regenerate
+# settings.cfg's secrets from scratch and
 # silently invalidate every existing session and encrypted backup/export.
 # One directory volume, not individual file binds - bind-mounting
 # settings.cfg as a single file breaks its atomic-write mechanism (see

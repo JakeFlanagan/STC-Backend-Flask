@@ -80,8 +80,8 @@ def test_non_admin_gets_403_on_lockouts_route():
 
 
 def test_reenabling_clears_tokens_revoked_at_so_new_login_is_never_rejected():
-    # TODO.md flagged a same-wall-clock-second disable-then-re-enable
-    # cycle as an untested edge case that could spuriously reject a
+    # A same-wall-clock-second disable-then-re-enable cycle is an easy
+    # edge case to miss, and it could spuriously reject a
     # brand-new login (check_auth's tokens_revoked_at check is <=, not <
     # - see its docstring). Clearing tokens_revoked_at on re-enable closes
     # this: a token issued after re-enabling has nothing to compare

@@ -1,6 +1,5 @@
 """Structured logging, optional Sentry error tracking, and a /metrics
-endpoint - the observability layer previously entirely missing (see
-TODO.md history). Every piece here is either always-safe-by-default
+endpoint. Every piece here is either always-safe-by-default
 (logging, metrics) or strictly opt-in via a blank-by-default settings.cfg
 key (Sentry), same pattern as config.REDIS_URL - see config.py's comment
 on each key.
