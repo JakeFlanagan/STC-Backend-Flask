@@ -110,3 +110,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Baked into the image and reported by GET /api/v1/admin/system,
+          # so the admin panel can say which commit is actually running.
+          build-args: |
+            SC_BUILD_SHA=${{ github.sha }}

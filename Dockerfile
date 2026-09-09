@@ -25,6 +25,14 @@ COPY . .
 
 EXPOSE 5000
 
+# Which commit this image was built from. Surfaced by
+# GET /api/v1/admin/system so an operator can tell what is actually
+# deployed without shelling into the box and reading image tags - the
+# question that matters most in the ten minutes after a bad deploy.
+# Defaults to "unknown", which is the honest answer for a local build.
+ARG SC_BUILD_SHA=unknown
+ENV SC_BUILD_SHA=${SC_BUILD_SHA}
+
 # settings.cfg, auth.db, and databases/ all live under SC_DATA_DIR instead
 # of next to the code (see config.py's BASE_DIR) - a volume mounted at
 # /data (see docker-compose.yml) must persist across restarts, or a
