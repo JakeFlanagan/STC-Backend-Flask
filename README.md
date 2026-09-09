@@ -429,6 +429,54 @@ Set `APP_BASE_URL` to your real frontend's origin - the emailed link is
 (see `app.py`'s docstring), so the actual reset *page* is the frontend's
 responsibility to implement.
 
+## Administration
+
+Everything under `/api/v1/admin/*` requires an access token whose `role`
+claim is `admin` (`blueprints/admin.py`'s `_require_admin`, checked on top
+of the ordinary auth gate). A non-admin gets a 403; an unauthenticated
+caller gets a 401 from the global gate before the role check is reached.
+
+| Method | Path | What it does |
+| --- | --- | --- |
+| GET | `/admin/users` | Every account, each with its live session count. |
+| POST | `/admin/users/<id>/disable` | Block future logins and reject the access token it already holds. |
+| POST | `/admin/users/<id>/enable` | Undo the above. |
+| DELETE | `/admin/users/<id>` | Delete the account. Its files are orphaned, not deleted (see below). |
+| POST | `/admin/users/<id>/password` | Set a password without knowing the old one, ending every session on that account and clearing its lockout. |
+| DELETE | `/admin/users/<id>/sessions` | End every session without changing the password. |
+| GET | `/admin/lockouts` | Usernames currently locked out of login. |
+| DELETE | `/admin/lockouts/<username>` | Clear one lockout and its failure count. |
+| GET | `/admin/system` | Runtime, disk and account figures. Secret-free by construction - see `system_info.py`. |
+| GET | `/admin/storage` | Every database file on disk, by account, plus orphans and legacy files. |
+| POST | `/admin/storage/<user_id>/<name>/backup` | An encrypted backup of any account's database, landing in that account's own backups. |
+| DELETE | `/admin/storage/orphans/<user_id>` | Permanently delete the files of an account that no longer exists. |
+
+Three of these deserve reading twice before use.
+
+`POST /admin/users/<id>/password` exists because `SMTP_HOST` is optional:
+with no mail configured the entire password-reset flow is a silent no-op,
+and this is the only remaining way to recover an account without editing
+`auth.db` by hand. It is refused for the caller's own account -
+`/auth/password` already does that properly, by asking for the current
+password first.
+
+`DELETE /admin/storage/orphans/<user_id>` is the only route in this
+backend that destroys somebody's data, and it does not move the files
+aside first. It refuses any id that still has an account, so it can only
+ever touch what `DELETE /admin/users/<id>` already orphaned - which is
+what makes "I deleted the wrong user" recoverable right up until this
+call.
+
+`POST /admin/storage/<user_id>/<name>/backup` writes into the target
+user's own backup directory, encrypted with `DB_ENCRYPTION_KEY` like every
+other backup. The admin who pressed the button cannot read the result;
+this is a safety net to take before doing something irreversible, not an
+export of someone else's books.
+
+`GET /admin/system` reports the running commit as `runtime.build_sha`,
+read from the `SC_BUILD_SHA` env var that the Dockerfile bakes in at build
+time. A local checkout reports `unknown`, which is the honest answer.
+
 ## Tests
 
 ```bash
@@ -471,9 +519,12 @@ works.
   `auth_db.record_login_failure`.
 - **Authorization:** an `admin`-role account (bootstrapped from
   `settings.cfg`'s `ADMIN_USERNAME`/`ADMIN_PASSWORD` on first startup) can
-  list/disable/enable/delete other accounts via `/api/v1/admin/*` - see
-  `blueprints/admin.py`. Disabling an account also invalidates any access
-  token it already holds, not just its future logins/refreshes.
+  manage other accounts, sessions, lockouts and stored data via
+  `/api/v1/admin/*` - see "Administration" above and `blueprints/admin.py`.
+  Disabling an account also invalidates any access token it already holds,
+  not just its future logins/refreshes. There is no way to *become* an
+  admin through the API: `/auth/register` always creates a `user`-role
+  account, and no route changes a role.
 - **Data isolation:** every account's databases are private to that
   account - see "Data & backups" above.
 - **CORS** is configurable via `settings.cfg`'s `ALLOWED_ORIGINS`

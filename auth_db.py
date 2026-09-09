@@ -565,3 +565,78 @@ def consume_password_reset(db: sqlite3.Connection, token_hash: str, new_password
     db.execute("UPDATE users SET tokens_revoked_at = datetime('now') WHERE id = ?", (user_id,))
     db.commit()
     return True
+
+
+def get_user(db: sqlite3.Connection, user_id: int) -> dict[str, Any] | None:
+    """Return one account's id/username/role/disabled/created_at/email, or
+    None if no user with that id exists. The by-id counterpart to
+    get_user_by_username, and like it, never checks a password - it must
+    not be used anywhere that stands in for authentication. Used by
+    blueprints/admin.py's destructive routes, which need to name the
+    account they are about to act on in their response."""
+    row = db.execute(
+        "SELECT id, username, role, disabled, created_at, email FROM users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "id": row["id"],
+        "username": row["username"],
+        "role": row["role"],
+        "disabled": bool(row["disabled"]),
+        "created_at": row["created_at"],
+        "email": row["email"],
+    }
+
+
+def clear_lockout(db: sqlite3.Connection, username: str) -> bool:
+    """Clear one username's login-failure record, ending any lockout it is
+    currently serving. Returns False when there was no record to clear (the
+    caller, blueprints/admin.py, turns that into a 404) - unlike
+    clear_login_failures, which is called on every successful login and has
+    no interest in whether a row existed. Same statement, different
+    contract: an operator clearing a lockout by hand wants to be told when
+    they cleared nothing, because the usual cause is a mistyped username."""
+    cur = db.execute("DELETE FROM login_failures WHERE username = ?", (username,))
+    db.commit()
+    return cur.rowcount > 0
+
+
+def active_session_counts(db: sqlite3.Connection) -> dict[int, int]:
+    """Map user_id -> number of live refresh tokens (not revoked, not yet
+    expired). One live refresh token is one signed-in client, so this is
+    the closest thing this backend has to a "sessions" count. Returned as a
+    dict keyed by user id so list_users' rows can be annotated without a
+    query per user."""
+    rows = db.execute(
+        "SELECT user_id, COUNT(*) AS n FROM refresh_tokens "
+        "WHERE revoked = 0 AND expires_at > datetime('now') GROUP BY user_id"
+    ).fetchall()
+    return {r["user_id"]: r["n"] for r in rows}
+
+
+def account_stats(db: sqlite3.Connection) -> dict[str, int]:
+    """Headline account counts for the admin overview: how many accounts
+    exist, how many are disabled, how many hold the admin role, how many
+    refresh tokens are live, and how many usernames are locked out right
+    now. One query each rather than one big UNION, because each is cheap
+    and the separate statements stay readable."""
+    total = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    disabled = db.execute("SELECT COUNT(*) FROM users WHERE disabled = 1").fetchone()[0]
+    admins = db.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'").fetchone()[0]
+    sessions = db.execute(
+        "SELECT COUNT(*) FROM refresh_tokens "
+        "WHERE revoked = 0 AND expires_at > datetime('now')"
+    ).fetchone()[0]
+    lockouts = db.execute(
+        "SELECT COUNT(*) FROM login_failures "
+        "WHERE locked_until IS NOT NULL AND locked_until > datetime('now')"
+    ).fetchone()[0]
+    return {
+        "users": total,
+        "disabled_users": disabled,
+        "admins": admins,
+        "active_sessions": sessions,
+        "lockouts": lockouts,
+    }
