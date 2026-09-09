@@ -22,7 +22,7 @@ databases_bp = Blueprint("databases", __name__, url_prefix="/api/v1/databases")
 MIN_EXPORT_PASSWORD_LENGTH = 8
 
 
-def _db_backup_dir(user_id: int, name: str) -> Path:
+def db_backup_dir(user_id: int, name: str) -> Path:
     """The backup subfolder for one of user_id's databases (e.g.
     databases/<user_id>/backups/clearout/), created on first use. Every
     database's backups live in their own subfolder, so filenames within it
@@ -54,7 +54,7 @@ def auto_backup(user_id: int) -> None:
     src = user_db_dir(user_id) / f"{name}.db"
     if not src.exists():
         return
-    backup_dir = _db_backup_dir(user_id, name)
+    backup_dir = db_backup_dir(user_id, name)
     today = date.today().isoformat()
     dst = backup_dir / f"{today}.db.enc"
     if dst.exists():
@@ -137,7 +137,7 @@ def manual_backup() -> Response | tuple[Response, int]:
         return jsonify({"error": "No active database"}), 400
     src = user_db_dir(g.user_id) / f"{name}.db"
     ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    dst = _db_backup_dir(g.user_id, name) / f"{ts}.db.enc"
+    dst = db_backup_dir(g.user_id, name) / f"{ts}.db.enc"
     dst.write_bytes(backup_crypto.encrypt_with_secret(src.read_bytes(), DB_ENCRYPTION_KEY))
     return jsonify({"ok": True, "file": dst.name})
 
@@ -150,7 +150,7 @@ def list_backups() -> Response:
     if not name:
         return jsonify([])
     result = []
-    for p in sorted(_db_backup_dir(g.user_id, name).glob("*.db.enc"), reverse=True):
+    for p in sorted(db_backup_dir(g.user_id, name).glob("*.db.enc"), reverse=True):
         stat = p.stat()
         result.append({
             "file": p.name,
@@ -179,7 +179,7 @@ def restore_backup() -> Response | tuple[Response, int]:
     if not name:
         return jsonify({"error": "No active database"}), 400
     filename = Path((request.get_json(silent=True) or {}).get("file", "")).name
-    backup_dir = _db_backup_dir(g.user_id, name)
+    backup_dir = db_backup_dir(g.user_id, name)
     backup_path = backup_dir / filename
     if not backup_path.exists():
         return jsonify({"error": "Backup not found"}), 404
@@ -215,7 +215,7 @@ def delete_backup(filename: str) -> Response | tuple[Response, int]:
     if not name:
         return jsonify({"error": "Not found"}), 404
     safe_name = Path(filename).name
-    path = _db_backup_dir(g.user_id, name) / safe_name
+    path = db_backup_dir(g.user_id, name) / safe_name
     if not path.exists():
         return jsonify({"error": "Not found"}), 404
     path.unlink()
