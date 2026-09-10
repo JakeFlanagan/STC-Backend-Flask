@@ -58,6 +58,17 @@ ENV SC_DATA_DIR=/data
 #   docker compose run --rm --user root backend chown -R 10001:10001 /data
 RUN mkdir -p /data /snapshots && chown 10001:10001 /data /snapshots
 
+# gunicorn 26 opens a control socket under $HOME/.gunicorn/. The app user
+# is created with --no-create-home, so its passwd home (/home/app) does not
+# exist and the master logs an ERROR on every single startup:
+#   Control server error: [Errno 13] Permission denied: '/home/app'
+# The app serves fine either way, which is what makes it worth fixing: a
+# permanent ERROR line at boot is what someone ignores while debugging a
+# real one. /tmp rather than a new home directory keeps the writable set
+# exactly as described below, and on a tmpfs the socket correctly does not
+# survive a restart.
+ENV HOME=/tmp
+
 # Everything below runs unprivileged. The application code stays root-owned
 # and read-only to the app user, which is what you want: the only writable
 # paths are /data and the tmpfs at /tmp.
