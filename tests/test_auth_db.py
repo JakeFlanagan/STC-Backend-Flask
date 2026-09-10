@@ -298,6 +298,25 @@ def test_delete_user_removes_account_and_refresh_tokens():
         expect("deleting a nonexistent id returns False", False, auth_db.delete_user(db, -1))
 
 
+def test_delete_user_removes_outstanding_password_reset_tokens():
+    """password_resets has a REFERENCES users(id) and no ON DELETE
+    CASCADE, and get_auth_db() turns foreign keys on, so leaving a reset
+    token behind is not an untidy row - the DELETE itself raises
+    IntegrityError and the admin route returns a 500. Any account that
+    ever used the reset flow would be undeletable."""
+    from auth_middleware import password_reset_expiry_timestamp
+
+    with app_module.app.app_context():
+        db = auth_db.get_auth_db()
+        user = auth_db.create_user(db, _unique_username(), "password123")
+        auth_db.create_password_reset_token(db, user["id"], "outstanding-hash", password_reset_expiry_timestamp())
+
+        expect("delete succeeds with a reset token outstanding", True, auth_db.delete_user(db, user["id"]))
+
+        remaining = db.execute("SELECT 1 FROM password_resets WHERE user_id = ?", (user["id"],)).fetchall()
+        expect("user's reset tokens also deleted", 0, len(remaining))
+
+
 def test_record_login_failure_locks_after_free_attempts():
     with app_module.app.app_context():
         db = auth_db.get_auth_db()

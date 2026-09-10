@@ -476,14 +476,21 @@ def set_user_disabled(db: sqlite3.Connection, user_id: int, disabled: bool) -> b
 
 
 def delete_user(db: sqlite3.Connection, user_id: int) -> bool:
-    """Permanently delete a user's account and refresh tokens. Their
-    databases/<user_id>/ directory on disk is deliberately left untouched -
-    this backend never auto-destroys data, only ever auto-orphans it (same
-    precedent as subsystem 2b's legacy per-user directories and the
-    backup-encryption feature's legacy plaintext backups). Returns False
-    if no user with that id exists (the caller, blueprints/admin.py, turns
-    that into a 404)."""
+    """Permanently delete a user's account, refresh tokens and any
+    outstanding password-reset tokens. Their databases/<user_id>/
+    directory on disk is deliberately left untouched - this backend never
+    auto-destroys data, only ever auto-orphans it (same precedent as
+    subsystem 2b's legacy per-user directories and the backup-encryption
+    feature's legacy plaintext backups). Returns False if no user with
+    that id exists (the caller, blueprints/admin.py, turns that into a
+    404).
+
+    Every table with a REFERENCES users(id) has to be cleared here. None
+    of them declare ON DELETE CASCADE, and get_auth_db() turns foreign
+    keys ON, so a missed one is not a stale row left behind - it is an
+    IntegrityError that reaches the client as a 500."""
     db.execute("DELETE FROM refresh_tokens WHERE user_id = ?", (user_id,))
+    db.execute("DELETE FROM password_resets WHERE user_id = ?", (user_id,))
     cur = db.execute("DELETE FROM users WHERE id = ?", (user_id,))
     db.commit()
     return cur.rowcount > 0
