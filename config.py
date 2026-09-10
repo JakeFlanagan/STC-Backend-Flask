@@ -89,6 +89,7 @@ _DEFAULTS: dict[str, str] = {
     "SMTP_FROM": "",
     "SMTP_USE_TLS": "1",
     "APP_BASE_URL": "http://localhost:3000",
+    "PASSWORD_RESET_PATH": "/reset-password",
     "TRUSTED_PROXY_HOPS": "1",
     "PASSWORD_RESET_EXPIRY_MINUTES": "30",
 }
@@ -279,6 +280,13 @@ SMTP_USE_TLS = _settings["SMTP_USE_TLS"] == "1"
 # reset *page* lives on whatever frontend is deployed alongside it, not
 # here. Change this to that frontend's real origin in production.
 APP_BASE_URL = _settings["APP_BASE_URL"]
+# The path the reset link points at, appended to APP_BASE_URL with the
+# token as a "token" query parameter. Configurable for the same reason
+# APP_BASE_URL is: the reset page belongs to whichever frontend is
+# deployed alongside this backend, and its router decides the path. A
+# hardcoded one silently sends every user to a 404 on any frontend that
+# named the route something else.
+PASSWORD_RESET_PATH = _settings["PASSWORD_RESET_PATH"]
 PASSWORD_RESET_EXPIRY_MINUTES = _int_setting(_settings, "PASSWORD_RESET_EXPIRY_MINUTES")
 # How many reverse-proxy hops in front of this backend are trusted, which
 # is how many X-Forwarded-For entries app.py's ProxyFix will strip before

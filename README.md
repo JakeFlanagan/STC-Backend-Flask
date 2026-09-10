@@ -424,10 +424,14 @@ instead (`stc.mailer` logger) rather than emailed - functional for local
 dev/testing without any SMTP server, not suitable for real users who
 need the email itself.
 
-Set `APP_BASE_URL` to your real frontend's origin - the emailed link is
-`{APP_BASE_URL}/reset-password?token=...`; this backend is JSON-only
-(see `app.py`'s docstring), so the actual reset *page* is the frontend's
-responsibility to implement.
+Set `APP_BASE_URL` to your real frontend's origin, and
+`PASSWORD_RESET_PATH` to the path on it that handles the link. The
+emailed link is `{APP_BASE_URL}{PASSWORD_RESET_PATH}?token=...`, so both
+halves are configuration: this backend is JSON-only (see `app.py`'s
+docstring), the reset *page* is the frontend's responsibility, and its
+router decides the path. `PASSWORD_RESET_PATH` defaults to
+`/reset-password`; a frontend that names the route something else sets
+this rather than every user landing on a 404.
 
 ## Administration
 

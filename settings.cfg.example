@@ -82,6 +82,9 @@ SMTP_USE_TLS=1
 # *page* lives on whatever frontend is deployed alongside it. Change this
 # to that frontend's real origin before going to production.
 APP_BASE_URL=http://localhost:3000
+# The path on that frontend that handles the reset link. Appended to
+# APP_BASE_URL, with the token added as a "token" query parameter.
+PASSWORD_RESET_PATH=/reset-password
 # How long a password-reset link stays valid before it must be requested
 # again.
 PASSWORD_RESET_EXPIRY_MINUTES=30

@@ -11,6 +11,7 @@ import uuid
 
 import app as app_module
 import auth_db
+import config
 from helpers import expect
 
 
@@ -444,3 +445,30 @@ def test_change_password_requires_authentication():
         json={"current_password": "password123", "new_password": "brand-new-password"},
     )
     expect("status code", 401, resp.status_code)
+
+
+def test_reset_link_uses_configured_base_url_and_path(caplog, monkeypatch):
+    """The reset page belongs to whatever frontend is deployed alongside
+    this backend, so both halves of the link are configuration. A frontend
+    whose router names the route something else gets a working link by
+    setting PASSWORD_RESET_PATH, not by patching this file."""
+    monkeypatch.setattr(config, "APP_BASE_URL", "https://app.example.com")
+    monkeypatch.setattr(config, "PASSWORD_RESET_PATH", "/password-reset/confirm")
+
+    c = app_module.app.test_client()
+    username = _unique_username()
+    c.post(
+        "/api/v1/auth/register",
+        json={"username": username, "password": "old-password-1", "email": _unique_email()},
+    )
+
+    with caplog.at_level("INFO", logger="stc.mailer"):
+        c.post("/api/v1/auth/password-reset/request", json={"username": username})
+
+    links = [r.reset_link for r in caplog.records if r.name == "stc.mailer"]
+    expect("exactly one reset link logged", 1, len(links))
+    expect(
+        "link built from APP_BASE_URL + PASSWORD_RESET_PATH",
+        True,
+        links[0].startswith("https://app.example.com/password-reset/confirm?token="),
+    )

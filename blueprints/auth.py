@@ -191,7 +191,7 @@ def request_password_reset() -> Response:
     if user is not None and user["email"] and not user["disabled"]:
         plaintext, token_hash = generate_password_reset_token()
         auth_db.create_password_reset_token(db, user["id"], token_hash, password_reset_expiry_timestamp())
-        reset_link = f"{config.APP_BASE_URL}/reset-password?token={plaintext}"
+        reset_link = f"{config.APP_BASE_URL}{config.PASSWORD_RESET_PATH}?token={plaintext}"
         mailer.send_password_reset_email(user["email"], reset_link)
     return jsonify({"message": _RESET_REQUESTED_MESSAGE})
 
