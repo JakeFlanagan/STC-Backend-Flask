@@ -44,17 +44,9 @@ jobs:
       # Scans the lock rather than requirements.txt so that transitive
       # dependencies are covered too. They are the ones most likely to
       # carry a CVE nobody chose to install.
-      #
-      # PYSEC-2026-4146 is skipped on purpose. It needs jwt.decode() to be
-      # called with a shared options dict and verify_signature turned off.
-      # auth_middleware.py passes no options at all and always verifies the
-      # signature, and there is no fixed PyJWT release yet. Drop the skip
-      # once there is one.
       - uses: pypa/gh-action-pip-audit@v1.1.0
         with:
           inputs: requirements.lock
-          ignore-vulns: |
-            PYSEC-2026-4146
       # Runs gitleaks' CLI directly via its official image, not the
       # gitleaks-action wrapper - that wrapper requires a paid
       # GITLEAKS_LICENSE for any org-owned repo beyond the first, which
