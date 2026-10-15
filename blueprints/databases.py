@@ -8,6 +8,7 @@ Item-level routes live in blueprints/items.py instead.
 
 import io
 import os
+import shutil
 from datetime import date, datetime
 from pathlib import Path
 
@@ -124,6 +125,13 @@ def delete_database(name: str) -> Response | tuple[Response, int]:
     if name == active:
         return jsonify({"error": "Cannot delete active database"}), 400
     path.unlink()
+    # Its backups go too. They're encrypted copies of the same records, and
+    # the privacy notice promises that deleting a database deletes them.
+    # Built by hand rather than with db_backup_dir(), which would create
+    # the folder if it were missing.
+    backups = user_db_dir(g.user_id) / "backups" / name
+    if backups.is_dir():
+        shutil.rmtree(backups)
     return jsonify({"ok": True})
 
 

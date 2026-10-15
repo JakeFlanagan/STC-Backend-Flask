@@ -70,6 +70,22 @@ def test_delete_database(client):
     expect("deleted db no longer listed", False, "to_delete" in listed)
 
 
+def test_deleting_a_database_deletes_its_backups(client):
+    client.post("/api/v1/databases", json={"name": "with_backups"})
+    old_backup = client.post("/api/v1/databases/backup").get_json()["file"]
+    listed = [b["file"] for b in client.get("/api/v1/databases/backups").get_json()]
+    expect("backup listed", True, old_backup in listed)
+
+    client.post("/api/v1/databases", json={"name": "elsewhere"})  # switch away
+    expect("delete ok", 200, client.delete("/api/v1/databases/with_backups").status_code)
+
+    # A new database with the same name must not inherit the old backups.
+    # (It may get its own automatic daily backup on the next request.)
+    client.post("/api/v1/databases", json={"name": "with_backups"})
+    listed = [b["file"] for b in client.get("/api/v1/databases/backups").get_json()]
+    expect("old backup gone", False, old_backup in listed)
+
+
 def test_delete_active_database_fails(client):
     active = client.get("/api/v1/databases").get_json()["active"]
     resp = client.delete(f"/api/v1/databases/{active}")
