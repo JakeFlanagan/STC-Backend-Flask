@@ -5,10 +5,11 @@
 # Before first `docker compose up`:
 #   1. Edit Caddyfile: replace the placeholder domain with your real one,
 #      and point its DNS A/AAAA record at this host.
-#   2. After the first `docker compose up`, edit the generated
-#      settings.cfg (in the stc_data volume - `docker compose exec app sh`
-#      to reach it at /data/settings.cfg) to add your real frontend origin
-#      to ALLOWED_ORIGINS (see settings.cfg.example's comment on that key).
+#   2. Only if you host your own copy of the frontend: after the first
+#      `docker compose up`, edit the generated settings.cfg (in the
+#      stc_data volume - `docker compose exec app sh` to reach it at
+#      /data/settings.cfg) to add its origin to ALLOWED_ORIGINS. The hosted
+#      app at https://app.sole-traders.uk is allowed by default.
 #
 # stc_data is a single directory volume holding settings.cfg, auth.db, and
 # databases/ (see config.py's SC_DATA_DIR / Dockerfile). These paths must

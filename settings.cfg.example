@@ -38,10 +38,11 @@ ADMIN_PASSWORD=
 # Which origins (scheme://host[:port]) may make cross-origin browser
 # requests to this API. Comma-separated. An entry ending in ":*" matches
 # that scheme+host on any port (useful for local dev, where the frontend's
-# port can vary). Add your frontend's real origin here if you're hosting
-# this backend anywhere other than localhost, e.g.:
-#   ALLOWED_ORIGINS=http://localhost:*,http://127.0.0.1:*,https://stc.example.com
-ALLOWED_ORIGINS=http://localhost:*,http://127.0.0.1:*
+# port can vary). The hosted web app at https://app.sole-traders.uk is
+# allowed by default, so you can use it with your own server. If you host
+# your own copy of the frontend as well, add its origin, e.g.:
+#   ALLOWED_ORIGINS=http://localhost:*,http://127.0.0.1:*,https://app.sole-traders.uk,https://stc.example.com
+ALLOWED_ORIGINS=http://localhost:*,http://127.0.0.1:*,https://app.sole-traders.uk
 
 # Set to a redis:// URL (e.g. redis://redis:6379/0) to share rate-limit
 # counters across multiple gunicorn workers/processes - see README's

@@ -77,7 +77,9 @@ _DEFAULTS: dict[str, str] = {
     # mark_admin_bootstrapped below). While it is 0, a blank ADMIN_PASSWORD
     # is treated as "not created yet" and gets generated.
     "ADMIN_BOOTSTRAPPED": "0",
-    "ALLOWED_ORIGINS": "http://localhost:*,http://127.0.0.1:*",
+    # The hosted web app is allowed by default so a fresh self-hosted
+    # server works with it straight away, no settings.cfg edit needed.
+    "ALLOWED_ORIGINS": "http://localhost:*,http://127.0.0.1:*,https://app.sole-traders.uk",
     "REDIS_URL": "",
     "LOG_LEVEL": "INFO",
     "SENTRY_DSN": "",

@@ -63,3 +63,11 @@ def test_config_module_exposes_allowed_origins():
     # for why the whole suite shares one already-initialized singleton.
     assert isinstance(config.ALLOWED_ORIGINS, list)
     assert len(config.ALLOWED_ORIGINS) >= 1
+
+
+def test_default_allows_the_hosted_web_app():
+    # Self-hosted servers are meant to work with app.sole-traders.uk with
+    # no settings.cfg edit, so the default has to include it as an exact
+    # origin (not a wildcard that would also match lookalike hosts).
+    patterns = config._parse_allowed_origins(config._DEFAULTS["ALLOWED_ORIGINS"])
+    assert "https://app.sole-traders.uk" in patterns

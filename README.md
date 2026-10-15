@@ -75,10 +75,17 @@ docker compose up -d --build
 # 2. Capture the auto-generated admin password from the first-run logs -
 #    it's only ever shown once, here:
 docker compose logs app | grep "Admin created"
+```
 
-# 3. Add your real frontend origin to ALLOWED_ORIGINS:
+That's enough to use it from the hosted web app: open
+https://app.sole-traders.uk, tap the gear on the login screen and enter
+`https://your-domain/api/v1`. The hosted app's origin is in
+`ALLOWED_ORIGINS` by default. If you also host your own copy of the
+frontend, add its origin too:
+
+```bash
 docker compose exec app sh -c \
-  "sed -i 's|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=https://your-frontend.example.com|' /data/settings.cfg"
+  "sed -i 's|^ALLOWED_ORIGINS=.*|&,https://your-frontend.example.com|' /data/settings.cfg"
 docker compose restart app
 ```
 
@@ -200,7 +207,7 @@ the app.
 | `ADMIN_USERNAME` | `admin` | First admin account, created on first run. |
 | `ADMIN_PASSWORD` | auto-generated | Printed once to the console the first time the app starts with no existing `settings.cfg`, then cleared from the file once the account exists. Only ever used to create the admin account, never to reset it. |
 | `ADMIN_BOOTSTRAPPED` | `0` | Set to `1` automatically once the admin account exists. Stops a cleared `ADMIN_PASSWORD` being read as "never generated" and re-minted on the next start-up. |
-| `ALLOWED_ORIGINS` | `http://localhost:*,http://127.0.0.1:*` | Comma-separated CORS origins. Add your real frontend origin before hosting anywhere other than localhost. |
+| `ALLOWED_ORIGINS` | `http://localhost:*,http://127.0.0.1:*,https://app.sole-traders.uk` | Comma-separated CORS origins. The hosted web app is included so it works with your server out of the box. Add your own frontend's origin if you host one. |
 | `REDIS_URL` | blank | Set to a `redis://` URL to share rate-limit counters across multiple gunicorn workers - see "Scaling beyond one worker". Docker sets this via `SC_REDIS_URL` instead (below) by default; this key matters for Option A or a manual override. |
 | `LOG_LEVEL` | `INFO` | Minimum level logged - see "Observability" below. |
 | `SENTRY_DSN` | blank | Enables Sentry error tracking when set - see "Observability" below. |
