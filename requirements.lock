@@ -28,12 +28,12 @@ packaging==26.2
 prometheus_client==0.26.0
 prometheus_flask_exporter==0.23.2
 pycparser==3.0
-PyJWT==2.13.0
+PyJWT==2.15.0
 python-dotenv==1.2.2
 python-json-logger==4.1.0
 redis==8.1.0
 sentry-sdk==2.66.1
 typing_extensions==4.16.0
-urllib3==2.7.0
-Werkzeug==3.1.8
+urllib3==2.8.0
+Werkzeug==3.1.9
 wrapt==2.3.0
